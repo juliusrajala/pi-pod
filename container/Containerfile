@@ -1,0 +1,28 @@
+FROM docker.io/library/node@sha256:4d676821dff059fd00d277ee4261ef34ea712317fed0737c03941481b5760c96
+
+ARG BUN_VERSION=1.3.14
+ARG BUN_SHA256=951ee2aee855f08595aeec6225226a298d3fea83a3dcd6465c09cbccdf7e848f
+ARG PI_VERSION=0.85.1
+ARG OPENCODE_VERSION=1.18.27
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends bash ca-certificates curl fd-find git ripgrep unzip \
+  && test "$(dpkg --print-architecture)" = "amd64" \
+  && curl --fail --location --silent --show-error \
+    "https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}/bun-linux-x64.zip" \
+    --output /tmp/bun.zip \
+  && echo "${BUN_SHA256}  /tmp/bun.zip" | sha256sum --check --status \
+  && unzip -q /tmp/bun.zip -d /tmp \
+  && install -m 755 /tmp/bun-linux-x64/bun /usr/local/bin/bun \
+  && ln -s /usr/bin/fdfind /usr/local/bin/fd \
+  && npm install --global --ignore-scripts "@earendil-works/pi-coding-agent@${PI_VERSION}" \
+  && npm install --global "opencode-ai@${OPENCODE_VERSION}" \
+  && mkdir -p /workspace /home/agent/.pi/agent /home/agent/.local/share/opencode \
+  && chown -R node:node /workspace /home/agent \
+  && rm -rf /var/lib/apt/lists/* /tmp/bun.zip /tmp/bun-linux-x64
+
+ENV HOME=/home/agent
+WORKDIR /workspace
+USER node
+
+CMD ["bash"]

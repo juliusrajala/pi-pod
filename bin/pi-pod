@@ -1,0 +1,33 @@
+#!/bin/sh
+# Run Bun from the installed package, not the caller's repository. Bun loads a
+# cwd bunfig.toml before TypeScript starts; the CLI restores the caller cwd in
+# src/cli.ts before it interprets any user path.
+set -eu
+
+required_bun_version=1.3.14
+actual_bun_version=$(bun --version)
+if ! awk -v actual="$actual_bun_version" -v required="$required_bun_version" 'BEGIN {
+  split(actual, a, /[.-]/); split(required, b, /[.-]/);
+  for (i = 1; i <= 3; i += 1) {
+    if ((a[i] + 0) > (b[i] + 0)) exit 0;
+    if ((a[i] + 0) < (b[i] + 0)) exit 1;
+  }
+  exit 0;
+}' </dev/null; then
+  printf '%s\n' "pi-pod requires Bun $required_bun_version or later; found $actual_bun_version." >&2
+  exit 1
+fi
+
+script_path=$(readlink -f -- "$0")
+package_root=$(CDPATH='' cd -- "$(dirname -- "$script_path")/.." && pwd -P)
+caller_cwd=$(pwd -P)
+host_home=${HOME-}
+
+# A caller-controlled global bunfig.toml is not a CLI configuration source.
+# The application restores HOME before it reads pi-pod state or starts Podman.
+export HOME="$package_root/.runtime-home"
+export PI_POD_CALLER_CWD="$caller_cwd"
+export PI_POD_HOST_HOME="$host_home"
+export PI_POD_LAUNCHER="$script_path"
+
+exec bun --cwd "$package_root" --no-env-file "$package_root/src/cli.ts" "$@"
