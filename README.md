@@ -2,7 +2,7 @@
 
 Run Pi or OpenCode in a rootless Podman container with only one writable project mount. It is intended for local development now and as a reusable execution boundary for an orchestrator later.
 
-`pi-pod` is a Bun library plus CLI for local/self-hosted use. It owns workspace preparation, authentication staging, Podman restrictions, cancellation, and retained clones. It does **not** commit, push, open pull requests, copy changes back, or run a daemon. Source is public at [github.com/juliusrajala/pi-pod](https://github.com/juliusrajala/pi-pod); the package remains private, so registry publication is not a v0.1 goal.
+`pi-pod` is a Bun library plus CLI for local/self-hosted use. It owns workspace preparation, authentication staging, Podman restrictions, cancellation, and retained clones. It does **not** commit, push, open pull requests, copy changes back, or run a daemon. Source is public at [github.com/juliusrajala/pi-pod](https://github.com/juliusrajala/pi-pod); it is source-available under [Apache-2.0 with Commons Clause](#license). The package remains private, so registry publication is not a v0.1 goal.
 
 ## Requirements
 
@@ -220,3 +220,7 @@ PI_POD_SYSTEMD_INTEGRATION=1 bun test src/cli/delegation.integration.test.ts
 ```
 
 A real subscription login and token-refresh smoke test requires your participation and should never print or commit tokens.
+
+## License
+
+pi-pod is source-available under the Apache License 2.0 with the Commons Clause License Condition v1.0. You may use, modify, and redistribute it subject to those terms; the license does not grant the right to sell software or services whose value derives entirely or substantially from pi-pod. See [LICENSE](LICENSE).
