@@ -19,6 +19,12 @@ export function normalizedCredentialDocument(agent: AgentName, provider: string,
   return `${JSON.stringify({ [provider]: credential }, null, 2)}\n`;
 }
 
+/** Filter the explicitly interactive-only host document to one selected provider. */
+export function normalizedHostCredentialDocument(agent: AgentName, provider: string, text: string): string {
+  const credential = selectedCredential(agent, provider, text, true, true);
+  return `${JSON.stringify({ [provider]: credential }, null, 2)}\n`;
+}
+
 export function assertSupportedCredentialProvider(agent: AgentName, provider: string): void {
   if (agent === "pi" && provider !== "openai-codex") {
     throw new Error(`Pi credential profiles currently support only openai-codex; use --auth none with an explicit API-key environment variable for another provider.`);
@@ -30,9 +36,14 @@ function selectedCredential(
   provider: string,
   text: string,
   requireCredential: boolean,
+  allowUnrelatedProviders = false,
 ): Record<string, unknown> {
   const document = parseJson(text, "auth.json");
   if (!isRecord(document)) throw new Error("Invalid auth.json: expected an object.");
+  // A profile is a selected-provider credential store, not an agent settings
+  // directory. Reject every other provider rather than staging it for native
+  // agent discovery or silently retaining an unknown credential shape.
+  if (!allowUnrelatedProviders) assertOnlyKeys(document, [provider]);
   const value = document[provider];
   if (value === undefined) {
     if (requireCredential) throw new Error(`Authentication did not create a credential for ${provider}.`);

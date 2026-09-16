@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildPodmanRunArgs } from "./podman.ts";
 import { defaultResourceLimits } from "./types.ts";
-import { hostToolEnvironment } from "./utils.ts";
+import { hostToolEnvironment } from "./utils/process.ts";
 
 let root = "";
 

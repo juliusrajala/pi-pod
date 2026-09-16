@@ -21,6 +21,8 @@ export function agentDefinition(agent: AgentName): AgentDefinition {
       environment: {
         HOME: "/home/agent",
         PI_CODING_AGENT_DIR: "/home/agent/.pi/agent",
+        /** Allows reviewed Pi extensions to identify this contained session. */
+        PI_POD_CONTAINER: "1",
         PI_SKIP_VERSION_CHECK: "1",
         PI_TELEMETRY: "0",
       },

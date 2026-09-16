@@ -1,6 +1,6 @@
 import { Crust } from "@crustjs/core";
 import { resolve } from "node:path";
-import { hostToolEnvironment } from "../../utils.ts";
+import { hostToolEnvironment } from "../../utils/process.ts";
 import { requireNoAgentArguments, requireNoExtraArguments } from "./validation.ts";
 
 const defaultImage = "localhost/pi-pod:0.1.0";

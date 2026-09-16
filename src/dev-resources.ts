@@ -1,7 +1,7 @@
 import { lstat, realpath, rm, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import { ensurePrivateStateDirectory, privateStateDirectory, readBoundedText, writePrivateFile } from "./utils.ts";
+import { ensurePrivateStateDirectory, privateStateDirectory, readBoundedText, writePrivateFile } from "./utils/fs.ts";
 
 const maxSettingsBytes = 256 * 1024;
 const containerResourceRoot = "/run/pi-pod-dev-resources";

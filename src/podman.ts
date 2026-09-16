@@ -1,18 +1,41 @@
 import { stat } from "node:fs/promises";
 import { agentDefinition } from "./agents.ts";
 import type { AgentName, ResourceLimits, RunMode } from "./types.ts";
-import { assertSafeMountPath, commandOutput, hostToolEnvironment } from "./utils.ts";
+import { commandOutput, hostToolEnvironment } from "./utils/process.ts";
+import { assertSafeMountPath } from "./utils.ts";
 
 const forbiddenEnvironment = new Set([
+  // Forge and source-control credentials.
   "GITHUB_TOKEN",
   "GH_TOKEN",
+  "GITLAB_TOKEN",
+  "BITBUCKET_TOKEN",
   "GIT_ASKPASS",
+  // Host identity and database credentials.
   "SSH_AUTH_SOCK",
+  "SSH_AGENT_PID",
   "DATABASE_URL",
   "TEST_DATABASE_URL",
   "PGPASSWORD",
+  "MYSQL_PWD",
+  "REDIS_URL",
+  // Proxies can route a task through host-only credential infrastructure.
+  "HTTP_PROXY",
+  "HTTPS_PROXY",
+  "ALL_PROXY",
+  "NO_PROXY",
+  "http_proxy",
+  "https_proxy",
+  "all_proxy",
+  "no_proxy",
+  // Other ambient service/cloud credentials are not task API credentials.
   "AWS_SECRET_ACCESS_KEY",
   "AWS_SESSION_TOKEN",
+  "GOOGLE_APPLICATION_CREDENTIALS",
+  "AZURE_CLIENT_SECRET",
+  "STRIPE_SECRET_KEY",
+  "SLACK_TOKEN",
+  "NPM_TOKEN",
 ]);
 
 export type PodmanLaunchOptions = {

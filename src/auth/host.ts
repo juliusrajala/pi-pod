@@ -1,7 +1,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { normalizedCredentialDocument } from "./credentials.ts";
-import { readBoundedText } from "../utils.ts";
+import { normalizedHostCredentialDocument } from "./credentials.ts";
+import { readBoundedText } from "../utils/fs.ts";
 
 const maxHostAuthBytes = 1024 * 1024;
 
@@ -9,7 +9,7 @@ const maxHostAuthBytes = 1024 * 1024;
 export async function hostPiCodexCredential(): Promise<string> {
   const path = join(hostPiAgentDirectory(), "auth.json");
   try {
-    return normalizedCredentialDocument("pi", "openai-codex", await readBoundedText(path, maxHostAuthBytes));
+    return normalizedHostCredentialDocument("pi", "openai-codex", await readBoundedText(path, maxHostAuthBytes));
   } catch (error) {
     if (isMissing(error)) throw new Error(`Host Pi credential does not exist: ${path}`);
     throw error;

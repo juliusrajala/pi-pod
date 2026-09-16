@@ -6,11 +6,8 @@ import { runPodmanContainer } from "./container/lifecycle.ts";
 import {
   acquireAuthProfile,
   createAuthProfile,
-  loadAuthProfile,
-  recoverHostPiAuthStages,
   recoverPendingAuthStages,
   stageAuthProfile,
-  stageHostPiAuth,
 } from "./auth.ts";
 import {
   assertDevResourceSource,
@@ -21,9 +18,11 @@ import {
 import { assertMountSource, assertPodmanAvailable, buildPodmanRunArgs, podmanEnvironment } from "./podman.ts";
 import type { AgentName, AuthOutcome, LoginOptions, LoginResult, RunAgentOptions, RunResult } from "./types.ts";
 import { agents, defaultResourceLimits } from "./types.ts";
-import { commandOutput, hostToolEnvironment, validIdentifier } from "./utils.ts";
+import { commandOutput, hostToolEnvironment } from "./utils/process.ts";
+import { validIdentifier } from "./utils.ts";
 import { assertWorkspaceWithinLimit, monitorWorkspaceUsage } from "./workspace-usage.ts";
 import { discardUnlaunchedRun, prepareWorkspace, releaseRunReservation, removeRun } from "./workspace.ts";
+import { resolveCredentialSource, stageCredentialSource, type StagedCredential } from "./run/credentials.ts";
 
 const defaultImage = "localhost/pi-pod:0.1.0";
 const headlessTimeoutMs = 10 * 60 * 1_000;
@@ -32,10 +31,7 @@ export async function runAgent(input: RunAgentOptions): Promise<RunResult> {
   const agent = input.agent ?? "pi";
   assertAgent(agent);
   const workspaceMode = input.workspaceMode ?? (input.mode === "interactive" ? "bind" : "clone");
-  const requestedAuth = input.authProfile ?? (input.mode === "interactive" && agent === "pi" ? "host" : "default");
-  if (requestedAuth === "host" && (input.mode !== "interactive" || agent !== "pi")) {
-    throw new Error("Host credentials are available only to interactive Pi dev sessions.");
-  }
+  const credentialSource = resolveCredentialSource({ agent, mode: input.mode, authProfile: input.authProfile });
   const limits = resolvedResourceLimits(input.limits);
   const image = input.image?.trim() || defaultImage;
   const containerName = `pi-pod-${crypto.randomUUID().slice(0, 12)}`;
@@ -53,11 +49,7 @@ export async function runAgent(input: RunAgentOptions): Promise<RunResult> {
     }, timeoutMs);
   let workspace: Awaited<ReturnType<typeof prepareWorkspace>> | undefined;
   let launched = false;
-  let authStage: {
-    agentStateDirectory: string;
-    reconcile: () => Promise<void>;
-    cleanup: () => Promise<void>;
-  } | undefined;
+  let authStage: StagedCredential | undefined;
   let promptStage: PromptStage | undefined;
   let devResources: DevResourceStage | undefined;
   let releaseAuth: (() => Promise<void>) | undefined;
@@ -71,10 +63,8 @@ export async function runAgent(input: RunAgentOptions): Promise<RunResult> {
   let result: RunResult | undefined;
 
   try {
+    // prepare workspace
     controller.signal.throwIfAborted();
-    promptStage = input.mode === "headless" && input.prompt !== undefined
-      ? await stagePrompt(input.prompt)
-      : undefined;
     await assertPodmanAvailable();
     workspace = await prepareWorkspace({
       path: input.workspace,
@@ -83,22 +73,26 @@ export async function runAgent(input: RunAgentOptions): Promise<RunResult> {
       signal: controller.signal,
     });
     await assertMountSource(workspace.path);
-    if (promptStage !== undefined) await assertMountSource(promptStage.file);
     await assertWorkspaceWithinLimit(workspace.path, limits.workspaceBytes);
+
+    // Stage the task only after the workspace and host preflight are valid.
+    promptStage = input.mode === "headless" && input.prompt !== undefined
+      ? await stagePrompt(input.prompt)
+      : undefined;
+    if (promptStage !== undefined) await assertMountSource(promptStage.file);
     const workspacePath = workspace.path;
 
-    if (requestedAuth === "host") {
-      await recoverHostPiAuthStages();
-      authStage = await stageHostPiAuth({ containerName });
-      authOutcome = { source: "host", reconciliation: "not-used", lock: "not-used" };
-    } else if (requestedAuth !== "none") {
-      const profile = await loadAuthProfile(agent, requestedAuth);
-      const lock = await acquireAuthProfile(profile, { containerName });
-      releaseAuth = lock.release;
-      authOutcome = { source: "profile", reconciliation: "retained", lock: "retained" };
-      await recoverPendingAuthStages(profile);
-      authStage = await stageAuthProfile(profile, { containerName });
-    }
+    // resolve credential source and stage resources
+    const credentials = await stageCredentialSource({
+      agent,
+      source: credentialSource.source,
+      profileName: credentialSource.profileName,
+      containerName,
+      onProfileLock: (release) => { releaseAuth = release; },
+    });
+    authStage = credentials.stage;
+    releaseAuth = credentials.release;
+    authOutcome = credentials.outcome;
     if (authStage !== undefined) {
       await assertMountSource(authStage.agentStateDirectory);
       await assertWorkspaceWithinLimit(authStage.agentStateDirectory, maxAuthStageBytes, "Authentication staging");
@@ -136,6 +130,7 @@ export async function runAgent(input: RunAgentOptions): Promise<RunResult> {
       runId: workspace.runId,
     });
 
+    // execute
     input.onDiagnostic?.(`${agent} in ${workspace.mode} workspace: ${workspacePath}`);
     const execution = await runPodmanContainer({
       args,
@@ -181,6 +176,7 @@ export async function runAgent(input: RunAgentOptions): Promise<RunResult> {
           ? "aborted"
           : "exited";
 
+    // report result; finally reconciles resources before this escapes.
     result = {
       agent,
       containerName,
@@ -207,6 +203,7 @@ export async function runAgent(input: RunAgentOptions): Promise<RunResult> {
     }
     throw error;
   } finally {
+    // Verify cleanup, reconcile/discard staged state, then release reservations.
     for (const monitor of monitors) monitor.stop();
     if (workspace?.owned && workspace.runId !== undefined) {
       if (containerRemoved) {

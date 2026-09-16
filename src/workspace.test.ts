@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 import { chmod, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { commandOutput } from "./utils.ts";
+import { commandOutput } from "./utils/process.ts";
 import { prepareWorkspace, releaseRunReservation, removeRun } from "./workspace.ts";
 
 let root = "";

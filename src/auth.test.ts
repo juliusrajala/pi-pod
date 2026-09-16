@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { acquireAuthProfile, createAuthProfile, loadAuthProfile, recoverAuthProfile, removeAuthProfileLock, stageAuthProfile, stageHostPiAuth } from "./auth.ts";
@@ -89,7 +89,6 @@ test("stages and persists only the selected Pi Codex credential", async () => {
         expires: Date.now() + 60_000,
         accountId: "account-id",
       },
-      unrelated: { type: "api_key", key: "must-not-persist" },
     }));
     await stage.reconcile();
     await stage.cleanup();
@@ -116,7 +115,6 @@ test("persists the selected native OpenCode API credential", async () => {
     const stage = await stageAuthProfile(profile);
     await writeFile(stage.authFile, JSON.stringify({
       openai: { type: "api", key: "fixture-key", metadata: { region: "test" } },
-      unrelated: { type: "oauth", access: "do-not-copy", refresh: "do-not-copy", expires: 1 },
     }));
     await stage.reconcile();
     await stage.cleanup();
@@ -128,12 +126,24 @@ test("persists the selected native OpenCode API credential", async () => {
   expect(stored).toEqual({ openai: { type: "api", key: "fixture-key", metadata: { region: "test" } } });
 });
 
+test("rejects unrelated providers in a wrapper-owned credential profile", async () => {
+  const profile = await createAuthProfile({ agent: "opencode", name: "isolated", provider: "openai" });
+  await writeFile(profile.authFile, JSON.stringify({
+    openai: { type: "api", key: "fixture-key" },
+    anthropic: { type: "api", key: "must-not-stage" },
+  }));
+  await expect(stageAuthProfile(profile)).rejects.toThrow("Credential contains unsupported fields.");
+});
+
 test("rejects unsupported credential fields instead of copying them back", async () => {
   const profile = await createAuthProfile({ agent: "opencode", name: "default", provider: "openai" });
   const lock = await acquireAuthProfile(profile);
   try {
     const stage = await stageAuthProfile(profile);
-    await writeFile(stage.authFile, JSON.stringify({ openai: { type: "api", key: "fixture-key", injected: "no" } }));
+    await writeFile(stage.authFile, JSON.stringify({
+      openai: { type: "api", key: "fixture-key", injected: "no" },
+      anthropic: { type: "api", key: "must-not-persist" },
+    }));
     await expect(stage.reconcile()).rejects.toThrow("Credential contains unsupported fields.");
   } finally {
     await lock.release();
@@ -188,6 +198,10 @@ test("does not recover a stage while its named container still exists", async ()
   await withExistingContainer(containerName, async () => {
     await expect(recoverAuthProfile("pi", "default")).rejects.toThrow("still mounted by container");
   });
+  // The fake only reports this exact name as present. Recovery must retain the
+  // stage and the known profile until that container is verified absent.
+  expect(await Bun.file(profile.authFile).text()).toBe("{}\n");
+  expect(await readdir(join(stateRoot, "pi-pod", "auth-staging"))).toHaveLength(1);
 });
 
 test("does not unlock a dead PID while its named container still exists", async () => {

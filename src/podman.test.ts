@@ -4,6 +4,7 @@ import { defaultResourceLimits } from "./types.ts";
 
 const originalOpenAi = Bun.env.OPENAI_API_KEY;
 const originalGitHub = Bun.env.GITHUB_TOKEN;
+const originalStripe = Bun.env.STRIPE_SECRET_KEY;
 const originalTerm = Bun.env.TERM;
 const originalColorTerm = Bun.env.COLORTERM;
 
@@ -12,6 +13,8 @@ afterEach(() => {
   else Bun.env.OPENAI_API_KEY = originalOpenAi;
   if (originalGitHub === undefined) delete Bun.env.GITHUB_TOKEN;
   else Bun.env.GITHUB_TOKEN = originalGitHub;
+  if (originalStripe === undefined) delete Bun.env.STRIPE_SECRET_KEY;
+  else Bun.env.STRIPE_SECRET_KEY = originalStripe;
   if (originalTerm === undefined) delete Bun.env.TERM;
   else Bun.env.TERM = originalTerm;
   if (originalColorTerm === undefined) delete Bun.env.COLORTERM;
@@ -43,6 +46,7 @@ test("constructs a least-privilege run with explicit mounts and environment", ()
   expect(args).toContain("--http-proxy=false");
   expect(args).toContain("--image-volume=ignore");
   expect(args).toContain("--env");
+  expect(args).toContain("PI_POD_CONTAINER=1");
   expect(args).toContain("OPENAI_API_KEY");
   expect(args).toContain("io.pi-pod.run-id=run-1");
   expect(args).toContain("type=bind,src=/state/runs/run-1/workspace,dst=/workspace,rw,relabel=private");
@@ -137,19 +141,53 @@ test("does not relabel a caller-owned bind workspace without explicit consent", 
   expect(args).not.toContain("type=bind,src=/project,dst=/workspace,rw,relabel=private");
 });
 
-test("does not permit forge or database credential forwarding", () => {
-  Bun.env.GITHUB_TOKEN = "host-only";
-  expect(() => podmanEnvironment(["GITHUB_TOKEN"])).toThrow("never forwarded");
-  expect(() => buildPodmanRunArgs({
+test("forwards only explicitly named API credentials to the Podman client", () => {
+  Bun.env.OPENAI_API_KEY = "fake-explicit-api-key";
+  Bun.env.STRIPE_SECRET_KEY = "fake-unrelated-secret";
+
+  const named = podmanEnvironment(["OPENAI_API_KEY"]);
+  const unnamed = podmanEnvironment([]);
+  const args = buildPodmanRunArgs({
     agent: "pi",
-    mode: "interactive",
+    mode: "headless",
     workspace: { path: "/workspace", relabel: false },
     agentArgs: [],
-    environment: ["DATABASE_URL"],
+    environment: ["OPENAI_API_KEY"],
     image: "image",
     containerName: "container",
     limits: defaultResourceLimits,
     network: "none",
-    tty: true,
-  })).toThrow("never forwarded");
+    tty: false,
+  });
+
+  expect(named.OPENAI_API_KEY).toBe("fake-explicit-api-key");
+  expect(named.STRIPE_SECRET_KEY).toBeUndefined();
+  expect(unnamed.OPENAI_API_KEY).toBeUndefined();
+  expect(args).toContain("OPENAI_API_KEY");
+  expect(args.join(" ")).not.toContain("fake-explicit-api-key");
+});
+
+test("rejects forge, SSH, database, proxy, and unrelated credential names", () => {
+  const forbidden = [
+    "GITHUB_TOKEN",
+    "SSH_AUTH_SOCK",
+    "DATABASE_URL",
+    "HTTPS_PROXY",
+    "STRIPE_SECRET_KEY",
+  ];
+  for (const name of forbidden) {
+    expect(() => podmanEnvironment([name])).toThrow("never forwarded");
+    expect(() => buildPodmanRunArgs({
+      agent: "pi",
+      mode: "headless",
+      workspace: { path: "/workspace", relabel: false },
+      agentArgs: [],
+      environment: [name],
+      image: "image",
+      containerName: "container",
+      limits: defaultResourceLimits,
+      network: "none",
+      tty: false,
+    })).toThrow("never forwarded");
+  }
 });

@@ -1,5 +1,5 @@
 import type { OutputSinks } from "../types.ts";
-import { hostToolEnvironment } from "../utils.ts";
+import { hostToolEnvironment } from "../utils/process.ts";
 
 const pollIntervalMs = 50;
 const cleanupTimeoutMs = 15_000;

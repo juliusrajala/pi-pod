@@ -15,7 +15,8 @@ import {
   validProvider,
   type AuthProfile,
 } from "./profiles.ts";
-import { ensurePrivateStateDirectory, privateStateDirectory, validIdentifier, writePrivateFile } from "../utils.ts";
+import { ensurePrivateStateDirectory, privateStateDirectory, writePrivateFile } from "../utils/fs.ts";
+import { validIdentifier } from "../utils.ts";
 
 /** Includes native lock/temp siblings as well as the bounded auth.json payload. */
 export const maxAuthStageBytes = 1024 * 1024;

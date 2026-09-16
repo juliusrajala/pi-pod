@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { maxPromptBytes } from "../../prompt.ts";
 import { runAgent } from "../../run.ts";
 import { agents, workspaceModes, type AgentName, type ResourceLimits, type RunMode, type RunResult, type WorkspaceMode } from "../../types.ts";
-import { readBoundedText } from "../../utils.ts";
+import { readBoundedText } from "../../utils/fs.ts";
 import { reexecInDelegatedScope } from "../delegation.ts";
 import { interruptSignal } from "../signals.ts";
 import { requireNoExtraArguments } from "./validation.ts";

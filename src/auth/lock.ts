@@ -1,7 +1,8 @@
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { managedContainerExists } from "../container/lifecycle.ts";
-import { validIdentifier, writePrivateFile } from "../utils.ts";
+import { writePrivateFile } from "../utils/fs.ts";
+import { validIdentifier } from "../utils.ts";
 import { profileVersion, readAuthMetadata, type AuthProfile } from "./profiles.ts";
 
 type LockOwner = {

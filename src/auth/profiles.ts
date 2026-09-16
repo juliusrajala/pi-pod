@@ -5,7 +5,8 @@ import {
   validateCredentialDocument,
 } from "./credentials.ts";
 import type { AgentName } from "../types.ts";
-import { ensurePrivateStateDirectory, privateStateDirectory, readBoundedText, validIdentifier, writeNewPrivateFile } from "../utils.ts";
+import { ensurePrivateStateDirectory, privateStateDirectory, readBoundedText, writeNewPrivateFile } from "../utils/fs.ts";
+import { validIdentifier } from "../utils.ts";
 
 export const profileVersion = 1;
 const maxAuthBytes = 256 * 1024;
