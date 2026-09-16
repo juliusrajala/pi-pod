@@ -2,7 +2,7 @@
 
 Run Pi or OpenCode in a rootless Podman container with only one writable project mount. It is intended for local development now and as a reusable execution boundary for an orchestrator later.
 
-`pi-pod` is a Bun library plus CLI for local/self-hosted use. It owns workspace preparation, authentication staging, Podman restrictions, cancellation, and retained clones. It does **not** commit, push, open pull requests, copy changes back, or run a daemon. The package intentionally remains private; registry publication is not a v0.1 goal.
+`pi-pod` is a Bun library plus CLI for local/self-hosted use. It owns workspace preparation, authentication staging, Podman restrictions, cancellation, and retained clones. It does **not** commit, push, open pull requests, copy changes back, or run a daemon. Source is public at [github.com/juliusrajala/pi-pod](https://github.com/juliusrajala/pi-pod); the package remains private, so registry publication is not a v0.1 goal.
 
 ## Requirements
 
@@ -13,9 +13,11 @@ Run Pi or OpenCode in a rootless Podman container with only one writable project
 
 This checkout pins Bun `1.3.14` in `.mise.toml`; the launcher refuses an older runtime before it loads CLI code. Activate mise in your shell, or run `PATH="$(dirname "$(mise which bun)"):$PATH" ./bin/pi-pod --help` from this checkout.
 
-Build the pinned image explicitly:
+Clone the source and build the pinned image:
 
 ```bash
+git clone https://github.com/juliusrajala/pi-pod.git
+cd pi-pod
 bun install
 ./bin/pi-pod build
 ```
