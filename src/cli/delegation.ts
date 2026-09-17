@@ -1,4 +1,4 @@
-import { podmanNeedsDelegatedScope } from "../podman.ts";
+import { podmanNeedsDelegatedScope } from "../container/args.ts";
 
 const delegationMarker = "PI_POD_DELEGATED_SCOPE";
 
@@ -8,14 +8,18 @@ const delegationMarker = "PI_POD_DELEGATED_SCOPE";
  * tmux while preserving pi-pod's CPU, memory, and process limits.
  */
 export async function reexecInDelegatedScope(argv: readonly string[]): Promise<boolean> {
-  if (Bun.env[delegationMarker] === "1" || !await podmanNeedsDelegatedScope()) return false;
+  if (Bun.env[delegationMarker] === "1" || !(await podmanNeedsDelegatedScope())) return false;
 
   const launcher = Bun.env.PI_POD_LAUNCHER;
   if (launcher === undefined) {
-    throw new Error("pi-pod needs a delegated cgroup scope; invoke it through the pi-pod launcher.");
+    throw new Error(
+      "pi-pod needs a delegated cgroup scope; invoke it through the pi-pod launcher.",
+    );
   }
 
-  console.error("pi-pod: entering a delegated user scope to enforce CPU, memory, and process limits.");
+  console.error(
+    "pi-pod: entering a delegated user scope to enforce CPU, memory, and process limits.",
+  );
   const child = Bun.spawn(delegatedScopeArgs(launcher, argv), {
     stdin: "inherit",
     stdout: "inherit",
@@ -28,8 +32,17 @@ export async function reexecInDelegatedScope(argv: readonly string[]): Promise<b
 export function delegatedScopeArgs(launcher: string, argv: readonly string[]): string[] {
   const environment = [
     `${delegationMarker}=1`,
-    ...["PATH", "HOME", "XDG_RUNTIME_DIR", "XDG_STATE_HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "TERM", "COLORTERM"]
-      .flatMap((name) => Bun.env[name] === undefined ? [] : [`${name}=${Bun.env[name]}`]),
+    ...[
+      "PATH",
+      "HOME",
+      "XDG_RUNTIME_DIR",
+      "XDG_STATE_HOME",
+      "XDG_CONFIG_HOME",
+      "XDG_DATA_HOME",
+      "XDG_CACHE_HOME",
+      "TERM",
+      "COLORTERM",
+    ].flatMap((name) => (Bun.env[name] === undefined ? [] : [`${name}=${Bun.env[name]}`])),
   ];
   return [
     "systemd-run",

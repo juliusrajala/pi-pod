@@ -1,4 +1,4 @@
-import { defaultImage } from "../defaults.ts";
+import { defaultImage } from "../container/image.ts";
 
 export const usage = `Usage:
   pi-pod build [--image <image>]
@@ -33,5 +33,10 @@ Examples:
 export function isWrapperHelpRequest(argv: readonly string[]): boolean {
   const separator = argv.indexOf("--");
   const wrapperArgs = argv.slice(0, separator === -1 ? argv.length : separator);
-  return wrapperArgs.length === 0 || wrapperArgs.includes("--help") || wrapperArgs.includes("-h") || wrapperArgs[0] === "help";
+  return (
+    wrapperArgs.length === 0 ||
+    wrapperArgs.includes("--help") ||
+    wrapperArgs.includes("-h") ||
+    wrapperArgs[0] === "help"
+  );
 }

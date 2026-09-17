@@ -1,5 +1,5 @@
 import { agentDefinition } from "../agents/registry.ts";
-import type { AgentName } from "../types.ts";
+import type { AgentName } from "../execution/types.ts";
 
 /**
  * Parse a bounded untrusted auth document and dispatch its selected native
@@ -15,12 +15,20 @@ export function validateCredentialDocument(
   selectedCredential(agent, provider, text, requireCredential);
 }
 
-export function normalizedCredentialDocument(agent: AgentName, provider: string, text: string): string {
+export function normalizedCredentialDocument(
+  agent: AgentName,
+  provider: string,
+  text: string,
+): string {
   return `${JSON.stringify({ [provider]: selectedCredential(agent, provider, text, true) }, null, 2)}\n`;
 }
 
 /** Filter an interactive host document to its one reviewed native provider. */
-export function normalizedHostCredentialDocument(agent: AgentName, provider: string, text: string): string {
+export function normalizedHostCredentialDocument(
+  agent: AgentName,
+  provider: string,
+  text: string,
+): string {
   return `${JSON.stringify({ [provider]: selectedCredential(agent, provider, text, true, true) }, null, 2)}\n`;
 }
 
@@ -40,14 +48,16 @@ function selectedCredential(
   if (!allowUnrelatedProviders) assertOnlyKeys(document, [provider]);
   const value = document[provider];
   if (value === undefined) {
-    if (requireCredential) throw new Error(`Authentication did not create a credential for ${provider}.`);
+    if (requireCredential)
+      throw new Error(`Authentication did not create a credential for ${provider}.`);
     return {};
   }
   return agentDefinition(agent).credentialCodec.normalize(provider, value);
 }
 
 function assertOnlyKeys(value: Record<string, unknown>, allowed: readonly string[]): void {
-  if (Object.keys(value).some((key) => !allowed.includes(key))) throw new Error("Credential contains unsupported fields.");
+  if (Object.keys(value).some((key) => !allowed.includes(key)))
+    throw new Error("Credential contains unsupported fields.");
 }
 
 function parseJson(value: string, label: string): unknown {
@@ -66,7 +76,8 @@ function assertNoPrototypeKeys(value: unknown): void {
     return;
   }
   for (const [key, child] of Object.entries(value)) {
-    if (key === "__proto__" || key === "prototype" || key === "constructor") throw new Error("forbidden object key");
+    if (key === "__proto__" || key === "prototype" || key === "constructor")
+      throw new Error("forbidden object key");
     assertNoPrototypeKeys(child);
   }
 }

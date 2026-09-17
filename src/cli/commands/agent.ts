@@ -1,9 +1,17 @@
 import { Crust } from "@crustjs/core";
 import { resolve } from "node:path";
 import { loadCliPreferences } from "../../config/load.ts";
-import { maxPromptBytes } from "../../prompt.ts";
-import { runAgent } from "../../run.ts";
-import { agents, workspaceModes, type AgentName, type ResourceLimits, type RunMode, type RunResult, type WorkspaceMode } from "../../types.ts";
+import { maxPromptBytes } from "../../execution/prompt.ts";
+import { runAgent } from "../../execution/run.ts";
+import {
+  agents,
+  workspaceModes,
+  type AgentName,
+  type ResourceLimits,
+  type RunMode,
+  type RunResult,
+  type WorkspaceMode,
+} from "../../execution/types.ts";
 import { readBoundedText } from "../../utils/fs.ts";
 import { reexecInDelegatedScope } from "../delegation.ts";
 import { interruptSignal } from "../signals.ts";
@@ -138,8 +146,12 @@ function resourceLimits(flags: CommonAgentFlags): Partial<ResourceLimits> {
   };
 }
 
-async function readPrompt(prompt: string | undefined, promptFile: string | undefined): Promise<string> {
-  if (prompt !== undefined && promptFile !== undefined) throw new Error("Use either --prompt or --prompt-file, not both.");
+async function readPrompt(
+  prompt: string | undefined,
+  promptFile: string | undefined,
+): Promise<string> {
+  if (prompt !== undefined && promptFile !== undefined)
+    throw new Error("Use either --prompt or --prompt-file, not both.");
   if (prompt !== undefined) return prompt;
   if (promptFile === undefined) throw new Error("run requires --prompt or --prompt-file.");
   try {
@@ -154,25 +166,33 @@ async function readPrompt(prompt: string | undefined, promptFile: string | undef
 
 function timeoutMilliseconds(seconds: number | undefined): number | undefined {
   if (seconds === undefined) return undefined;
-  if (!Number.isFinite(seconds) || seconds <= 0) throw new Error("--timeout must be a positive number of seconds.");
+  if (!Number.isFinite(seconds) || seconds <= 0)
+    throw new Error("--timeout must be a positive number of seconds.");
   return seconds * 1_000;
 }
 
 function reportRunResult(result: RunResult): void {
-  if (result.workspace.owned) console.error(`Retained clone ${result.workspace.runId}: ${result.workspace.path}`);
+  if (result.workspace.owned)
+    console.error(`Retained clone ${result.workspace.runId}: ${result.workspace.path}`);
   if (!result.cleanup.containerRemoved || result.cleanup.reservation === "unreleased") {
-    console.error(`Container or retained-clone cleanup was not verified: ${result.cleanup.error ?? result.containerName}`);
+    console.error(
+      `Container or retained-clone cleanup was not verified: ${result.cleanup.error ?? result.containerName}`,
+    );
     process.exitCode = 1;
     return;
   }
-  const authRequiresRecovery = result.auth.reconciliation === "retained" || result.auth.lock === "release-failed";
+  const authRequiresRecovery =
+    result.auth.reconciliation === "retained" || result.auth.lock === "release-failed";
   if (authRequiresRecovery) {
-    console.error(`Authentication persistence requires recovery: ${result.auth.error ?? result.auth.lock}.`);
+    console.error(
+      `Authentication persistence requires recovery: ${result.auth.error ?? result.auth.lock}.`,
+    );
   }
   if (result.termination === "exited") {
     process.exitCode = authRequiresRecovery && result.exitCode === 0 ? 1 : result.exitCode;
     return;
   }
   console.error(`Agent ${result.termination}.`);
-  process.exitCode = result.termination === "timeout" ? 124 : result.termination === "aborted" ? 130 : 1;
+  process.exitCode =
+    result.termination === "timeout" ? 124 : result.termination === "aborted" ? 130 : 1;
 }

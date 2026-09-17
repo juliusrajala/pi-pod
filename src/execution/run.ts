@@ -1,37 +1,52 @@
 import { stagePrompt, type PromptStage } from "./prompt.ts";
-import { maxAuthStageBytes } from "./auth/staging.ts";
-import { runPodmanContainer } from "./container/lifecycle.ts";
+import { maxAuthStageBytes } from "../auth/staging.ts";
+import { runPodmanContainer } from "../container/lifecycle.ts";
 import {
   assertDevResourceSource,
   hostPiExtensionsDirectory,
   stageHostPiExtensionPackages,
   type DevResourceStage,
-} from "./agents/pi/dev-resources.ts";
-import { assertMountSource, assertPodmanAvailable, buildPodmanRunArgs, podmanEnvironment } from "./podman.ts";
+} from "../agents/pi/dev-resources.ts";
+import {
+  assertMountSource,
+  assertPodmanAvailable,
+  buildPodmanRunArgs,
+  podmanEnvironment,
+} from "../container/args.ts";
 import type { AgentName, AuthOutcome, RunAgentOptions, RunResult } from "./types.ts";
 
-import { commandOutput, hostToolEnvironment } from "./utils/process.ts";
-import { validIdentifier } from "./utils.ts";
-import { assertWorkspaceWithinLimit, monitorWorkspaceUsage } from "./workspace-usage.ts";
-import { discardUnlaunchedRun, prepareWorkspace, releaseRunReservation, removeRun } from "./workspace.ts";
-import { stageCredentialSource, type StagedCredential } from "./run/credentials.ts";
-import { resolveRunPolicy } from "./run/options.ts";
+import { assertWorkspaceWithinLimit, monitorWorkspaceUsage } from "../resources/storage.ts";
+import { prepareWorkspace } from "../workspace/prepare.ts";
+import { discardUnlaunchedRun, releaseRunReservation } from "../workspace/runs.ts";
+import { stageCredentialSource, type StagedCredential } from "./credentials.ts";
+import { resolveRunPolicy } from "./policy.ts";
 
 export async function runAgent(input: RunAgentOptions): Promise<RunResult> {
   const policy = resolveRunPolicy(input);
-  const { agent, definition, workspaceMode, credentialSource, limits, image, timeoutMs, network, preferenceArgs } = policy;
+  const {
+    agent,
+    definition,
+    workspaceMode,
+    credentialSource,
+    limits,
+    image,
+    timeoutMs,
+    network,
+    preferenceArgs,
+  } = policy;
   const containerName = `pi-pod-${crypto.randomUUID().slice(0, 12)}`;
   const controller = new AbortController();
   const onAbort = () => controller.abort(input.signal?.reason);
   input.signal?.addEventListener("abort", onAbort, { once: true });
   if (input.signal?.aborted) onAbort();
   let timedOut = false;
-  const timeout = timeoutMs === undefined
-    ? undefined
-    : setTimeout(() => {
-      timedOut = true;
-      controller.abort(new Error("Agent run timed out."));
-    }, timeoutMs);
+  const timeout =
+    timeoutMs === undefined
+      ? undefined
+      : setTimeout(() => {
+          timedOut = true;
+          controller.abort(new Error("Agent run timed out."));
+        }, timeoutMs);
   let workspace: Awaited<ReturnType<typeof prepareWorkspace>> | undefined;
   let launched = false;
   let authStage: StagedCredential | undefined;
@@ -61,9 +76,10 @@ export async function runAgent(input: RunAgentOptions): Promise<RunResult> {
     await assertWorkspaceWithinLimit(workspace.path, limits.workspaceBytes);
 
     // Stage the task only after the workspace and host preflight are valid.
-    promptStage = input.mode === "headless" && input.prompt !== undefined
-      ? await stagePrompt(input.prompt)
-      : undefined;
+    promptStage =
+      input.mode === "headless" && input.prompt !== undefined
+        ? await stagePrompt(input.prompt)
+        : undefined;
     if (promptStage !== undefined) await assertMountSource(promptStage.file);
     const workspacePath = workspace.path;
 
@@ -73,19 +89,28 @@ export async function runAgent(input: RunAgentOptions): Promise<RunResult> {
       source: credentialSource.source,
       profileName: credentialSource.profileName,
       containerName,
-      onProfileLock: (release) => { releaseAuth = release; },
+      onProfileLock: (release) => {
+        releaseAuth = release;
+      },
     });
     authStage = credentials.stage;
     releaseAuth = credentials.release;
     authOutcome = credentials.outcome;
     if (authStage !== undefined) {
       await assertMountSource(authStage.agentStateDirectory);
-      await assertWorkspaceWithinLimit(authStage.agentStateDirectory, maxAuthStageBytes, "Authentication staging");
+      await assertWorkspaceWithinLimit(
+        authStage.agentStateDirectory,
+        maxAuthStageBytes,
+        "Authentication staging",
+      );
     }
     // Native passthrough follows validated preferences and therefore wins
     // without emitting a second managed preference flag.
     const agentArgs = [...preferenceArgs, ...(input.agentArgs ?? [])];
-    const loadHostExtensions = input.mode === "interactive" && definition.interactiveDevResources === "pi" && !agentArgs.includes("--no-extensions");
+    const loadHostExtensions =
+      input.mode === "interactive" &&
+      definition.interactiveDevResources === "pi" &&
+      !agentArgs.includes("--no-extensions");
     const extensionsDirectory = loadHostExtensions ? await hostPiExtensionsDirectory() : undefined;
     devResources = loadHostExtensions ? await stageHostPiExtensionPackages() : undefined;
     if (extensionsDirectory !== undefined) await assertMountSource(extensionsDirectory);
@@ -101,7 +126,10 @@ export async function runAgent(input: RunAgentOptions): Promise<RunResult> {
     const args = buildPodmanRunArgs({
       agent,
       mode: input.mode,
-      workspace: { path: workspacePath, relabel: workspace.owned || input.relabelWorkspace === true },
+      workspace: {
+        path: workspacePath,
+        relabel: workspace.owned || input.relabelWorkspace === true,
+      },
       authDirectory: authStage?.agentStateDirectory,
       extensionsDirectory,
       extensionSettingsFile: devResources?.settingsFile,
@@ -135,13 +163,17 @@ export async function runAgent(input: RunAgentOptions): Promise<RunResult> {
             controller,
             onError: input.onDiagnostic,
           }),
-          ...(authStage === undefined ? [] : [monitorWorkspaceUsage({
-            path: authStage.agentStateDirectory,
-            maxBytes: maxAuthStageBytes,
-            label: "Authentication staging",
-            controller,
-            onError: input.onDiagnostic,
-          })]),
+          ...(authStage === undefined
+            ? []
+            : [
+                monitorWorkspaceUsage({
+                  path: authStage.agentStateDirectory,
+                  maxBytes: maxAuthStageBytes,
+                  label: "Authentication staging",
+                  controller,
+                  onError: input.onDiagnostic,
+                }),
+              ]),
         ];
       },
       onDiagnostic: input.onDiagnostic,
@@ -158,10 +190,10 @@ export async function runAgent(input: RunAgentOptions): Promise<RunResult> {
       : authLimitExceeded
         ? "auth-limit"
         : timedOut
-        ? "timeout"
-        : execution.aborted
-          ? "aborted"
-          : "exited";
+          ? "timeout"
+          : execution.aborted
+            ? "aborted"
+            : "exited";
 
     // report result; finally reconciles resources before this escapes.
     result = {
@@ -186,7 +218,9 @@ export async function runAgent(input: RunAgentOptions): Promise<RunResult> {
     if (!launched && workspace?.mode === "clone") {
       const runId = workspace.runId;
       await discardUnlaunchedRun(runId, containerName).catch((cleanupError) => {
-        input.onDiagnostic?.(`Could not remove unstarted clone ${runId}: ${errorMessage(cleanupError)}`);
+        input.onDiagnostic?.(
+          `Could not remove unstarted clone ${runId}: ${errorMessage(cleanupError)}`,
+        );
       });
     }
     throw error;
@@ -201,7 +235,9 @@ export async function runAgent(input: RunAgentOptions): Promise<RunResult> {
         } catch (error) {
           reservation = "unreleased";
           reservationError = errorMessage(error);
-          input.onDiagnostic?.(`Could not mark retained clone ${workspace.runId} removable: ${reservationError}`);
+          input.onDiagnostic?.(
+            `Could not mark retained clone ${workspace.runId} removable: ${reservationError}`,
+          );
         }
       } else {
         reservation = "unreleased";
@@ -209,7 +245,9 @@ export async function runAgent(input: RunAgentOptions): Promise<RunResult> {
     }
     if (devResources !== undefined) {
       if (launched && !containerRemoved) {
-        input.onDiagnostic?.("Dev extension staging was retained because container removal was not verified.");
+        input.onDiagnostic?.(
+          "Dev extension staging was retained because container removal was not verified.",
+        );
       } else {
         await devResources.cleanup().catch((error) => {
           input.onDiagnostic?.(`Could not remove dev extension staging: ${errorMessage(error)}`);
@@ -218,7 +256,9 @@ export async function runAgent(input: RunAgentOptions): Promise<RunResult> {
     }
     if (promptStage !== undefined) {
       if (launched && !containerRemoved) {
-        input.onDiagnostic?.("Prompt staging was retained because container removal was not verified.");
+        input.onDiagnostic?.(
+          "Prompt staging was retained because container removal was not verified.",
+        );
       } else {
         await promptStage.cleanup().catch((error) => {
           input.onDiagnostic?.(`Could not remove prompt staging: ${errorMessage(error)}`);
@@ -234,14 +274,17 @@ export async function runAgent(input: RunAgentOptions): Promise<RunResult> {
           lock: authOutcome.source === "profile" ? "retained" : "not-used",
           error: "Container removal was not verified.",
         };
-        input.onDiagnostic?.("Authentication staging was retained because container removal was not verified.");
+        input.onDiagnostic?.(
+          "Authentication staging was retained because container removal was not verified.",
+        );
       } else {
         try {
           await authStage.reconcile();
           await authStage.cleanup();
-          authOutcome = authOutcome.source === "profile"
-            ? { source: "profile", reconciliation: "persisted", lock: "retained" }
-            : { source: "host", reconciliation: "not-used", lock: "not-used" };
+          authOutcome =
+            authOutcome.source === "profile"
+              ? { source: "profile", reconciliation: "persisted", lock: "retained" }
+              : { source: "host", reconciliation: "not-used", lock: "not-used" };
         } catch (error) {
           const message = errorMessage(error);
           authOutcome = {
@@ -268,30 +311,15 @@ export async function runAgent(input: RunAgentOptions): Promise<RunResult> {
       result.auth = authOutcome;
       result.cleanup.reservation = reservation;
       if (reservationError !== undefined) {
-        result.cleanup.error = result.cleanup.error === undefined
-          ? reservationError
-          : `${result.cleanup.error}; ${reservationError}`;
+        result.cleanup.error =
+          result.cleanup.error === undefined
+            ? reservationError
+            : `${result.cleanup.error}; ${reservationError}`;
       }
     }
     if (timeout !== undefined) clearTimeout(timeout);
     input.signal?.removeEventListener("abort", onAbort);
   }
-}
-
-export async function removeAgentRun(runId: string): Promise<void> {
-  validIdentifier(runId, "Run ID");
-  const active = await commandOutput([
-    "podman",
-    "ps",
-    "--all",
-    "--quiet",
-    "--filter",
-    `label=io.pi-pod.run-id=${runId}`,
-  ], { env: hostToolEnvironment() });
-  if (active.trim().length > 0) {
-    throw new Error(`Run ${runId} still has a container. Stop it before removing its workspace.`);
-  }
-  await removeRun(runId);
 }
 
 function errorMessage(error: unknown): string {

@@ -7,17 +7,18 @@ This checkout pins Bun 1.3.14 in `.mise.toml`.
 ```sh
 mise exec -- bun install
 mise exec -- bun test
+mise exec -- bun run format:check
 mise exec -- bun run typecheck
 mise exec -- ./bin/pi-pod build
 git diff --check
 ```
 
-If Mise is unavailable in a pi-pod worker, first verify `bun --version` matches the pin, then use that Bun directly. Use Bun, not Node, npm, pnpm, or yarn. Invoke the source CLI through `./bin/pi-pod`; do not execute `src/cli.ts` from an untrusted workspace.
+If Mise is unavailable in a pi-pod worker, first verify `bun --version` matches the pin, then use that Bun directly. Use Bun, not Node, npm, pnpm, or yarn. Format intentionally with `bun run format`; `bun run format:check` never rewrites files. Prettier is development-only; no hooks or editor settings are installed. Invoke the source CLI through `./bin/pi-pod`; do not execute `src/cli.ts` from an untrusted workspace.
 
 Opt-in integration tests require the relevant local Podman/user-systemd setup:
 
 ```sh
-PI_POD_INTEGRATION=1 mise exec -- bun test src/podman.integration.test.ts
+PI_POD_INTEGRATION=1 mise exec -- bun test src/container/podman.integration.test.ts
 PI_POD_SYSTEMD_INTEGRATION=1 mise exec -- bun test src/cli/delegation.integration.test.ts
 ```
 
@@ -27,10 +28,10 @@ Tests use temporary fake credentials and fixtures. Never make personal configura
 
 1. `src/cli/bootstrap.ts` and `bin/pi-pod`: trusted host startup boundary.
 2. `src/cli/`: syntax and command composition.
-3. `src/run.ts` and `src/login.ts`: public run/profile-login orchestration and outcome reporting.
-4. `src/run/credentials.ts`, `src/auth/`: auth policy, selected-provider storage, staging, locks, and recovery.
-5. `src/workspace/`: bind/clone preparation, controlled local Git, retained-run ownership.
-6. `src/podman.ts` and `src/container/lifecycle.ts`: hardened argv, preflight, execution, and exact-container cleanup.
+3. `src/execution/`: public run/login orchestration, policy, prompt staging, and outcomes.
+4. `src/auth/`: auth policy, selected-provider storage, staging, locks, and recovery.
+5. `src/workspace/` and `src/state/`: preparation, retained ownership/removal, and wrapper state policy.
+6. `src/container/` and `src/resources/`: hardened argv, lifecycle, limits, and storage enforcement.
 
 See [architecture.md](architecture.md) for dependency and lifecycle tables.
 

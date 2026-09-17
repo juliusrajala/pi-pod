@@ -1,8 +1,8 @@
 import { stat } from "node:fs/promises";
-import { agentDefinition } from "./agents/registry.ts";
-import type { AgentName, ResourceLimits, RunMode } from "./types.ts";
-import { commandOutput, hostToolEnvironment } from "./utils/process.ts";
-import { assertSafeMountPath } from "./utils.ts";
+import { agentDefinition } from "../agents/registry.ts";
+import type { AgentName, ResourceLimits, RunMode } from "../execution/types.ts";
+import { commandOutput, hostToolEnvironment } from "../utils/process.ts";
+import { assertSafeMountPath } from "../state/identifiers.ts";
 
 const forbiddenEnvironment = new Set([
   // Forge and source-control credentials.
@@ -65,32 +65,47 @@ export type PodmanLaunchOptions = {
 export function buildPodmanRunArgs(options: PodmanLaunchOptions): string[] {
   const agent = agentDefinition(options.agent);
   const user = `${process.getuid?.() ?? 1000}:${process.getgid?.() ?? 1000}`;
-  const workspaceMount = options.workspace === undefined
-    ? []
-    : bindMount(options.workspace.path, "/workspace", options.workspace.relabel);
-  const authMount = options.authDirectory === undefined
-    ? []
-    : bindMount(options.authDirectory, agent.authDirectory, true);
-  const extensionMount = options.extensionsDirectory === undefined
-    ? []
-    : bindMount(options.extensionsDirectory, `${agent.authDirectory}/extensions`, false, false);
-  const extensionSettingsMount = options.extensionSettingsFile === undefined
-    ? []
-    : bindMount(options.extensionSettingsFile, `${agent.authDirectory}/settings.json`, true, false);
-  const extensionPackageMounts = (options.extensionPackageMounts ?? []).flatMap(({ source, destination }) =>
-    bindMount(source, destination, false, false));
-  const promptMount = options.promptFile === undefined
-    ? []
-    : bindMount(options.promptFile, "/run/pi-pod-prompt", true, false);
+  const workspaceMount =
+    options.workspace === undefined
+      ? []
+      : bindMount(options.workspace.path, "/workspace", options.workspace.relabel);
+  const authMount =
+    options.authDirectory === undefined
+      ? []
+      : bindMount(options.authDirectory, agent.authDirectory, true);
+  const extensionMount =
+    options.extensionsDirectory === undefined
+      ? []
+      : bindMount(options.extensionsDirectory, `${agent.authDirectory}/extensions`, false, false);
+  const extensionSettingsMount =
+    options.extensionSettingsFile === undefined
+      ? []
+      : bindMount(
+          options.extensionSettingsFile,
+          `${agent.authDirectory}/settings.json`,
+          true,
+          false,
+        );
+  const extensionPackageMounts = (options.extensionPackageMounts ?? []).flatMap(
+    ({ source, destination }) => bindMount(source, destination, false, false),
+  );
+  const promptMount =
+    options.promptFile === undefined
+      ? []
+      : bindMount(options.promptFile, "/run/pi-pod-prompt", true, false);
   const environment = forwardedEnvironment(options.environment);
   const terminalEnvironment = options.tty
-    ? ["TERM", "COLORTERM"].flatMap((name) => Bun.env[name] === undefined ? [] : ["--env", `${name}=${Bun.env[name]}`])
+    ? ["TERM", "COLORTERM"].flatMap((name) =>
+        Bun.env[name] === undefined ? [] : ["--env", `${name}=${Bun.env[name]}`],
+      )
     : [];
-  const command = options.command ?? agent.command({
-    mode: options.mode,
-    promptPath: options.promptFile === undefined ? undefined : "/run/pi-pod-prompt",
-    agentArgs: options.agentArgs,
-  });
+  const command =
+    options.command ??
+    agent.command({
+      mode: options.mode,
+      promptPath: options.promptFile === undefined ? undefined : "/run/pi-pod-prompt",
+      agentArgs: options.agentArgs,
+    });
 
   return [
     "run",
@@ -156,9 +171,15 @@ export function podmanEnvironment(names: readonly string[]): Record<string, stri
 }
 
 export async function assertPodmanAvailable(): Promise<void> {
-  if (process.platform !== "linux") throw new Error("pi-pod requires native Linux with local rootless Podman.");
+  if (process.platform !== "linux")
+    throw new Error("pi-pod requires native Linux with local rootless Podman.");
   const info = await podmanInfo();
-  if (!isRecord(info) || !isRecord(info.host) || !isRecord(info.host.security) || info.host.security.rootless !== true) {
+  if (
+    !isRecord(info) ||
+    !isRecord(info.host) ||
+    !isRecord(info.host.security) ||
+    info.host.security.rootless !== true
+  ) {
     throw new Error("pi-pod requires local rootless Podman.");
   }
   const host = info.host;
@@ -170,7 +191,9 @@ export async function assertPodmanAvailable(): Promise<void> {
     !Array.isArray(cgroupControllers) ||
     !["cpu", "memory", "pids"].every((controller) => cgroupControllers.includes(controller))
   ) {
-    throw new Error("Podman lacks the cpu, memory, or pids cgroup controller required for pi-pod limits.");
+    throw new Error(
+      "Podman lacks the cpu, memory, or pids cgroup controller required for pi-pod limits.",
+    );
   }
   if (host.serviceIsRemote === true) {
     throw new Error("pi-pod does not support remote Podman services.");
@@ -186,11 +209,19 @@ export async function podmanNeedsDelegatedScope(): Promise<boolean> {
     const host = info.host;
     const security = host.security;
     if (!isRecord(security)) return false;
-    if (host.os !== "linux" || host.cgroupVersion !== "v2" || security.rootless !== true || host.serviceIsRemote === true) {
+    if (
+      host.os !== "linux" ||
+      host.cgroupVersion !== "v2" ||
+      security.rootless !== true ||
+      host.serviceIsRemote === true
+    ) {
       return false;
     }
     const controllers = host.cgroupControllers;
-    return Array.isArray(controllers) && !["cpu", "memory", "pids"].every((controller) => controllers.includes(controller));
+    return (
+      Array.isArray(controllers) &&
+      !["cpu", "memory", "pids"].every((controller) => controllers.includes(controller))
+    );
   } catch {
     // Preserve the normal, specific preflight error when Podman itself is not usable.
     return false;
@@ -198,7 +229,9 @@ export async function podmanNeedsDelegatedScope(): Promise<boolean> {
 }
 
 async function podmanInfo(): Promise<unknown> {
-  const raw = await commandOutput(["podman", "info", "--format", "json"], { env: hostToolEnvironment() });
+  const raw = await commandOutput(["podman", "info", "--format", "json"], {
+    env: hostToolEnvironment(),
+  });
   try {
     return JSON.parse(raw);
   } catch {
@@ -211,7 +244,12 @@ export async function assertMountSource(path: string): Promise<void> {
   await stat(path);
 }
 
-function bindMount(source: string, destination: string, relabel: boolean, writable = true): string[] {
+function bindMount(
+  source: string,
+  destination: string,
+  relabel: boolean,
+  writable = true,
+): string[] {
   assertSafeMountPath(source);
   const options = ["type=bind", `src=${source}`, `dst=${destination}`, writable ? "rw" : "ro"];
   if (relabel) options.push("relabel=private");
@@ -229,8 +267,10 @@ function forwardedEnvironment(names: readonly string[]): string[] {
 }
 
 function validateForwardedEnvironment(name: string): void {
-  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) throw new Error(`Invalid environment variable name: ${name}`);
-  if (forbiddenEnvironment.has(name)) throw new Error(`${name} is never forwarded into agent containers.`);
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name))
+    throw new Error(`Invalid environment variable name: ${name}`);
+  if (forbiddenEnvironment.has(name))
+    throw new Error(`${name} is never forwarded into agent containers.`);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

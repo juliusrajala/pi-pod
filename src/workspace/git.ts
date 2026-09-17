@@ -1,10 +1,16 @@
 import { lstat, readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
-import type { PreparedWorkspace } from "../types.ts";
+import type { PreparedWorkspace } from "../execution/types.ts";
 import { readBoundedText } from "../utils/fs.ts";
 import { commandOutput } from "../utils/process.ts";
-import { validIdentifier } from "../utils.ts";
-import { createRunDirectory, runsDirectory, writeRunMetadata, type RunMetadata, type RunReservation } from "./runs.ts";
+import { validIdentifier } from "../state/identifiers.ts";
+import {
+  createRunDirectory,
+  runsDirectory,
+  writeRunMetadata,
+  type RunMetadata,
+  type RunReservation,
+} from "./runs.ts";
 
 const maxAttributeFiles = 1_000;
 const maxAttributeBytes = 1024 * 1024;
@@ -28,11 +34,22 @@ export async function prepareClone(input: {
   try {
     // --no-local prevents hardlinks/shared object stores. --no-checkout keeps
     // source filters dormant until attributes have been rejected above.
-    await git([
-      "clone", "--no-local", "--no-checkout", "--no-recurse-submodules",
-      "--config", "core.hooksPath=/dev/null", "--config", "core.fsmonitor=false",
-      sourcePath, workspacePath,
-    ], undefined, signal);
+    await git(
+      [
+        "clone",
+        "--no-local",
+        "--no-checkout",
+        "--no-recurse-submodules",
+        "--config",
+        "core.hooksPath=/dev/null",
+        "--config",
+        "core.fsmonitor=false",
+        sourcePath,
+        workspacePath,
+      ],
+      undefined,
+      signal,
+    );
     await git(["remote", "remove", "origin"], workspacePath, signal);
     await git(["config", "core.hooksPath", "/dev/null"], workspacePath, signal);
     await git(["config", "core.fsmonitor", "false"], workspacePath, signal);
@@ -46,13 +63,15 @@ export async function prepareClone(input: {
       sourcePath,
       baseRevision,
       createdAt: new Date().toISOString(),
-      ...(containerName === undefined ? {} : {
-        reservation: {
-          containerName: validIdentifier(containerName, "Container name"),
-          pid: process.pid,
-          startedAt: new Date().toISOString(),
-        } satisfies RunReservation,
-      }),
+      ...(containerName === undefined
+        ? {}
+        : {
+            reservation: {
+              containerName: validIdentifier(containerName, "Container name"),
+              pid: process.pid,
+              startedAt: new Date().toISOString(),
+            } satisfies RunReservation,
+          }),
     } satisfies RunMetadata);
     return { mode: "clone", path: workspacePath, owned: true, runId, sourcePath, baseRevision };
   } catch (error) {
@@ -64,7 +83,8 @@ export async function prepareClone(input: {
 
 function gitEnvironment(): Record<string, string> {
   const path = Bun.env.PATH;
-  if (path === undefined || path.length === 0) throw new Error("PATH is required to inspect a Git workspace.");
+  if (path === undefined || path.length === 0)
+    throw new Error("PATH is required to inspect a Git workspace.");
   return {
     PATH: path,
     LANG: Bun.env.LANG ?? "C.UTF-8",
@@ -88,7 +108,9 @@ async function assertCloneableRepository(path: string, signal?: AbortSignal): Pr
   await assertNoFilterAttributes(path);
   const status = await git(["status", "--porcelain=v1", "--untracked-files=all"], path, signal);
   if (status.trim().length > 0) {
-    throw new Error("Clone workspaces require a clean Git repository; use bind mode to include uncommitted or untracked work.");
+    throw new Error(
+      "Clone workspaces require a clean Git repository; use bind mode to include uncommitted or untracked work.",
+    );
   }
 }
 
@@ -103,7 +125,9 @@ async function assertNoFilterAttributes(root: string): Promise<void> {
   for (const file of files) {
     const content = await readBoundedText(file, maxAttributeBytes);
     if (content.split(/\r?\n/).some(hasFilterAttribute)) {
-      throw new Error(`Clone workspaces reject Git filter attributes (${file}) because validating a dirty source must not execute repository-configured commands. Use bind mode instead.`);
+      throw new Error(
+        `Clone workspaces reject Git filter attributes (${file}) because validating a dirty source must not execute repository-configured commands. Use bind mode instead.`,
+      );
     }
   }
 }
@@ -118,9 +142,11 @@ async function findAttributeFiles(root: string): Promise<string[]> {
       if (entry.name === ".git") continue;
       const path = join(directory, entry.name);
       if (entry.name === ".gitattributes") {
-        if (entry.isSymbolicLink()) throw new Error(`Clone workspaces reject symlinked Git attributes (${path}).`);
+        if (entry.isSymbolicLink())
+          throw new Error(`Clone workspaces reject symlinked Git attributes (${path}).`);
         files.push(path);
-        if (files.length > maxAttributeFiles) throw new Error("Clone workspace has too many .gitattributes files to inspect safely.");
+        if (files.length > maxAttributeFiles)
+          throw new Error("Clone workspace has too many .gitattributes files to inspect safely.");
         continue;
       }
       if (!entry.isSymbolicLink() && entry.isDirectory()) directories.push(path);
@@ -136,16 +162,28 @@ function hasFilterAttribute(line: string): boolean {
 
 async function assertIndependentClone(path: string, signal?: AbortSignal): Promise<void> {
   const alternates = join(path, ".git", "objects", "info", "alternates");
-  if (await Bun.file(alternates).exists()) throw new Error("Refusing clone that shares Git object storage with the source repository.");
+  if (await Bun.file(alternates).exists())
+    throw new Error("Refusing clone that shares Git object storage with the source repository.");
   const origin = await git(["remote"], path, signal);
   if (origin.trim().length > 0) throw new Error("Refusing clone with a configured remote.");
 }
 
 async function git(args: readonly string[], cwd?: string, signal?: AbortSignal): Promise<string> {
-  return commandOutput([
-    "git", "-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false",
-    "-c", "core.attributesFile=/dev/null", "-c", "credential.helper=", ...args,
-  ], { cwd, env: gitEnvironment(), signal });
+  return commandOutput(
+    [
+      "git",
+      "-c",
+      "core.hooksPath=/dev/null",
+      "-c",
+      "core.fsmonitor=false",
+      "-c",
+      "core.attributesFile=/dev/null",
+      "-c",
+      "credential.helper=",
+      ...args,
+    ],
+    { cwd, env: gitEnvironment(), signal },
+  );
 }
 
 function isMissing(error: unknown): error is NodeJS.ErrnoException {

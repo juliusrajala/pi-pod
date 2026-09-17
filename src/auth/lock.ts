@@ -2,7 +2,7 @@ import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { managedContainerExists } from "../container/lifecycle.ts";
 import { writePrivateFile } from "../utils/fs.ts";
-import { validIdentifier } from "../utils.ts";
+import { validIdentifier } from "../state/identifiers.ts";
 import { profileVersion, readAuthMetadata, type AuthProfile } from "./profiles.ts";
 
 type LockOwner = {
@@ -17,25 +17,34 @@ export type ProfileLock = {
 };
 
 /** Serialize access to a profile which can be refreshed by only one agent. */
-export async function acquireAuthProfile(profile: AuthProfile, options: { containerName?: string } = {}): Promise<ProfileLock> {
+export async function acquireAuthProfile(
+  profile: AuthProfile,
+  options: { containerName?: string } = {},
+): Promise<ProfileLock> {
   const lockPath = join(profile.directory, ".active");
   try {
     await mkdir(lockPath, { mode: 0o700 });
   } catch (error) {
     if (isExists(error)) {
-      throw new Error(`Auth profile "${profile.name}" is already in use. Parallel runs cannot share a refreshing credential profile.`);
+      throw new Error(
+        `Auth profile "${profile.name}" is already in use. Parallel runs cannot share a refreshing credential profile.`,
+      );
     }
     throw error;
   }
-  const containerName = options.containerName === undefined
-    ? null
-    : validIdentifier(options.containerName, "Container name");
-  await writePrivateFile(join(lockPath, "owner.json"), `${JSON.stringify({
-    version: profileVersion,
-    pid: process.pid,
-    startedAt: new Date().toISOString(),
-    containerName,
-  } satisfies LockOwner)}\n`);
+  const containerName =
+    options.containerName === undefined
+      ? null
+      : validIdentifier(options.containerName, "Container name");
+  await writePrivateFile(
+    join(lockPath, "owner.json"),
+    `${JSON.stringify({
+      version: profileVersion,
+      pid: process.pid,
+      startedAt: new Date().toISOString(),
+      containerName,
+    } satisfies LockOwner)}\n`,
+  );
   return {
     release: async () => {
       await rm(lockPath, { recursive: true, force: true });
@@ -48,13 +57,19 @@ export async function removeAuthProfileLock(profile: AuthProfile): Promise<void>
   const lockPath = join(profile.directory, ".active");
   const owner = await readLockOwner(join(lockPath, "owner.json"));
   if (owner === undefined) {
-    throw new Error(`Auth profile "${profile.name}" has invalid lock metadata; refusing to unlock it automatically.`);
+    throw new Error(
+      `Auth profile "${profile.name}" has invalid lock metadata; refusing to unlock it automatically.`,
+    );
   }
   if (processExists(owner.pid)) {
-    throw new Error(`Auth profile "${profile.name}" may still be used by process ${owner.pid}; refusing to unlock it.`);
+    throw new Error(
+      `Auth profile "${profile.name}" may still be used by process ${owner.pid}; refusing to unlock it.`,
+    );
   }
-  if (owner.containerName !== null && await managedContainerExists(owner.containerName)) {
-    throw new Error(`Auth profile "${profile.name}" is still mounted by container ${owner.containerName}; stop it before unlocking.`);
+  if (owner.containerName !== null && (await managedContainerExists(owner.containerName))) {
+    throw new Error(
+      `Auth profile "${profile.name}" is still mounted by container ${owner.containerName}; stop it before unlocking.`,
+    );
   }
   await rm(lockPath, { recursive: true, force: true });
 }
@@ -73,7 +88,8 @@ async function readLockOwner(path: string): Promise<LockOwner | undefined> {
     ) {
       return undefined;
     }
-    if (typeof value.containerName === "string") validIdentifier(value.containerName, "Container name");
+    if (typeof value.containerName === "string")
+      validIdentifier(value.containerName, "Container name");
     return {
       version: profileVersion,
       pid: value.pid,
@@ -90,7 +106,12 @@ function processExists(pid: number): boolean {
     process.kill(pid, 0);
     return true;
   } catch (error) {
-    return !(typeof error === "object" && error !== null && "code" in error && error.code === "ESRCH");
+    return !(
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      error.code === "ESRCH"
+    );
   }
 }
 

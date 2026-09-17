@@ -29,34 +29,46 @@ test("stages only local host extension packages in filtered Pi settings", async 
   const agent = join(Bun.env.HOME!, ".pi", "agent");
   const packageRoot = join(root, "extensions-package");
   await mkdir(packageRoot);
-  await writeFile(join(agent, "settings.json"), JSON.stringify({
-    defaultProvider: "openai-codex",
-    defaultModel: "gpt-5.6-terra",
-    defaultThinkingLevel: "high",
-    packages: [{ source: packageRoot, extensions: ["extensions/example.ts"], skills: ["must-not-copy"] }],
-  }));
+  await writeFile(
+    join(agent, "settings.json"),
+    JSON.stringify({
+      defaultProvider: "openai-codex",
+      defaultModel: "gpt-5.6-terra",
+      defaultThinkingLevel: "high",
+      packages: [
+        { source: packageRoot, extensions: ["extensions/example.ts"], skills: ["must-not-copy"] },
+      ],
+    }),
+  );
 
   const stage = await stageHostPiExtensionPackages();
   expect(stage).toBeDefined();
-  expect(stage!.mounts).toEqual([{ source: packageRoot, destination: "/run/pi-pod-dev-resources/package-0" }]);
+  expect(stage!.mounts).toEqual([
+    { source: packageRoot, destination: "/run/pi-pod-dev-resources/package-0" },
+  ]);
   expect(JSON.parse(await readFile(stage!.settingsFile, "utf8"))).toEqual({
     defaultProvider: "openai-codex",
     defaultModel: "gpt-5.6-terra",
     defaultThinkingLevel: "high",
-    packages: [{
-      source: "/run/pi-pod-dev-resources/package-0",
-      extensions: ["extensions/example.ts"],
-      skills: [],
-      prompts: [],
-      themes: [],
-    }],
+    packages: [
+      {
+        source: "/run/pi-pod-dev-resources/package-0",
+        extensions: ["extensions/example.ts"],
+        skills: [],
+        prompts: [],
+        themes: [],
+      },
+    ],
   });
   await stage!.cleanup();
 });
 
 test("rejects non-local host extension packages instead of installing them in dev", async () => {
   const agent = join(Bun.env.HOME!, ".pi", "agent");
-  await writeFile(join(agent, "settings.json"), JSON.stringify({ packages: ["npm:unreviewed-extension"] }));
+  await writeFile(
+    join(agent, "settings.json"),
+    JSON.stringify({ packages: ["npm:unreviewed-extension"] }),
+  );
 
   await expect(stageHostPiExtensionPackages()).rejects.toThrow("not a local path");
 });

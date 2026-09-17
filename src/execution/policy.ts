@@ -1,8 +1,8 @@
 import { agentDefinition, assertAgentMode, type AgentDefinition } from "../agents/registry.ts";
-import { defaultHeadlessTimeoutMs, defaultImage } from "../defaults.ts";
-import { resolvedResourceLimits, resolvedTimeoutMs } from "../options.ts";
+import { defaultHeadlessTimeoutMs, defaultImage } from "../container/image.ts";
+import { resolvedResourceLimits, resolvedTimeoutMs } from "../resources/limits.ts";
 import type { AgentPreferences } from "../config/types.ts";
-import type { AgentName, ResourceLimits, RunAgentOptions, WorkspaceMode } from "../types.ts";
+import type { AgentName, ResourceLimits, RunAgentOptions, WorkspaceMode } from "./types.ts";
 import { resolveCredentialSource, type CredentialSource } from "./credentials.ts";
 
 /** Pure default and capability resolution shared by CLI-backed and library runs. */
@@ -30,7 +30,11 @@ export function resolveRunPolicy(input: RunAgentOptions): ResolvedRunPolicy {
     agent,
     definition,
     workspaceMode: input.workspaceMode ?? (input.mode === "interactive" ? "bind" : "clone"),
-    credentialSource: resolveCredentialSource({ agent, mode: input.mode, authProfile: input.authProfile }),
+    credentialSource: resolveCredentialSource({
+      agent,
+      mode: input.mode,
+      authProfile: input.authProfile,
+    }),
     limits: resolvedResourceLimits(input.limits),
     image: input.image?.trim() || defaultImage,
     timeoutMs: resolvedTimeoutMs(input.mode, input.timeoutMs, defaultHeadlessTimeoutMs),

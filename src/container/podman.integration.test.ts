@@ -2,9 +2,9 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { buildPodmanRunArgs } from "./podman.ts";
-import { defaultResourceLimits } from "./defaults.ts";
-import { hostToolEnvironment } from "./utils/process.ts";
+import { buildPodmanRunArgs } from "./args.ts";
+import { defaultResourceLimits } from "./image.ts";
+import { hostToolEnvironment } from "../utils/process.ts";
 
 let root = "";
 
@@ -103,7 +103,12 @@ test.skipIf(Bun.env.PI_POD_INTEGRATION !== "1")(
     expect(exitCode, stderr).toBe(0);
     const credentials = await Bun.file(join(authState, "auth.json")).json();
     expect(credentials).toEqual({
-      "openai-codex": { type: "oauth", access: "fixture-access", refresh: "fixture-refresh", expires: 1234 },
+      "openai-codex": {
+        type: "oauth",
+        access: "fixture-access",
+        refresh: "fixture-refresh",
+        expires: 1234,
+      },
     });
   },
 );

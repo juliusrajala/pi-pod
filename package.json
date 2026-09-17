@@ -41,10 +41,14 @@
     "cli": "./bin/pi-pod",
     "build:image": "./bin/pi-pod build",
     "test": "bun test",
-    "typecheck": "bun x tsc --noEmit"
+    "typecheck": "bun x tsc --noEmit",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "validate": "bun run format:check && bun test && bun run typecheck"
   },
   "devDependencies": {
     "@types/bun": "latest",
+    "prettier": "3.5.3",
     "typescript": "5.9.3"
   },
   "dependencies": {

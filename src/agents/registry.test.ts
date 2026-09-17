@@ -4,10 +4,14 @@ import { agentDefinition, assertAgentMode, createAgentRegistry } from "./registr
 
 test("static registry exposes reviewed agents and rejects unknown IDs", () => {
   expect(agentDefinition("pi").hostAuth).toEqual({ provider: "openai-codex", source: "host-pi" });
-  expect(agentDefinition("opencode").hostAuth).toEqual({ provider: "openai", source: "host-opencode" });
+  expect(agentDefinition("opencode").hostAuth).toEqual({
+    provider: "openai",
+    source: "host-opencode",
+  });
   expect(() => agentDefinition("unreviewed")).toThrow("Unsupported agent");
-  expect(() => assertAgentMode({ ...agentDefinition("pi"), modes: ["interactive"] }, "headless"))
-    .toThrow("does not support headless mode");
+  expect(() =>
+    assertAgentMode({ ...agentDefinition("pi"), modes: ["interactive"] }, "headless"),
+  ).toThrow("does not support headless mode");
 });
 
 test("registry constructor exercises a fixture integration without loading plugins", () => {
@@ -24,5 +28,7 @@ test("registry constructor exercises a fixture integration without loading plugi
   };
   const registry = createAgentRegistry(["fixture"] as const, [fixture]);
   expect(registry.fixture.command({ mode: "headless", agentArgs: [] })).toEqual(["fixture"]);
-  expect(() => createAgentRegistry(["fixture"] as const, [{ ...fixture, id: "other" }])).toThrow("Unknown agent definition");
+  expect(() => createAgentRegistry(["fixture"] as const, [{ ...fixture, id: "other" }])).toThrow(
+    "Unknown agent definition",
+  );
 });

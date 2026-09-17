@@ -131,23 +131,23 @@ Do not create a `common/`, `services/`, `managers/`, or `core/` dumping ground t
 
 ## 3. File-by-file migration map
 
-| Current location | Destination and disposition |
-| --- | --- |
-| `src/run.ts` | `execution/run.ts`; move `removeAgentRun` to `workspace/remove.ts`; extract its finalization block to `execution/finalize.ts`. Remove the old file. |
-| `src/login.ts` | `execution/login.ts`. Keep shared container lifecycle; do not combine login and run into one universal workflow. |
-| `src/run/options.ts` | `execution/policy.ts`; CLI and library share this resolver. |
-| `src/run/credentials.ts` | `execution/credentials.ts`; shared auth types go to `auth/types.ts`. Remove the emptied `run/` directory. |
-| `src/prompt.ts` | `execution/prompt.ts`, retaining its byte bound and private staging behavior. |
-| `src/auth.ts` | Actual public recovery operations go to `auth/recovery.ts`; imports/re-exports are replaced with direct imports. Remove the facade. |
-| `src/podman.ts` | Split its existing responsibilities into `container/args.ts`, `mounts.ts`, `environment.ts`, and `preflight.ts`. Remove the old file. |
-| `src/workspace.ts` | `workspace/prepare.ts`; use direct imports for reservation/removal helpers rather than re-exporting them from preparation. |
-| `src/workspace-usage.ts` | `resources/storage.ts`; rename workspace-specific monitor terminology to storage terminology because auth staging also uses it. Preserve messages and behavior unless a separately reviewed change requires otherwise. |
-| `src/options.ts` | Resource validation to `resources/limits.ts`; timeout validation to `execution/policy.ts`. Remove the old file. |
-| `src/defaults.ts` | Image default to `container/image.ts`; headless timeout to `execution/policy.ts`; resource defaults to `resources/limits.ts`. Remove the catch-all file. |
-| `src/types.ts` | Move types to their owning domains, as below; retain their package exports through `index.ts`. Remove the catch-all file. |
-| `src/utils.ts` | `validIdentifier` to `state/identifiers.ts`; `isInside` to `utils/paths.ts`; Podman mount-path validation to `container/mounts.ts`. Remove the old file. |
-| `src/utils/fs.ts` | Keep generic I/O; move state-root functions to `state/paths.ts`, canonical path resolution to `utils/paths.ts`, and guarded quarantine removal to `state/removal.ts`. |
-| `src/agents.ts`, `src/dev-resources.ts` if still present | Complete their Plan 04 moves to `agents/`; do not preserve duplicate entry points. |
+| Current location                                         | Destination and disposition                                                                                                                                                                                            |
+| -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/run.ts`                                             | `execution/run.ts`; move `removeAgentRun` to `workspace/remove.ts`; extract its finalization block to `execution/finalize.ts`. Remove the old file.                                                                    |
+| `src/login.ts`                                           | `execution/login.ts`. Keep shared container lifecycle; do not combine login and run into one universal workflow.                                                                                                       |
+| `src/run/options.ts`                                     | `execution/policy.ts`; CLI and library share this resolver.                                                                                                                                                            |
+| `src/run/credentials.ts`                                 | `execution/credentials.ts`; shared auth types go to `auth/types.ts`. Remove the emptied `run/` directory.                                                                                                              |
+| `src/prompt.ts`                                          | `execution/prompt.ts`, retaining its byte bound and private staging behavior.                                                                                                                                          |
+| `src/auth.ts`                                            | Actual public recovery operations go to `auth/recovery.ts`; imports/re-exports are replaced with direct imports. Remove the facade.                                                                                    |
+| `src/podman.ts`                                          | Split its existing responsibilities into `container/args.ts`, `mounts.ts`, `environment.ts`, and `preflight.ts`. Remove the old file.                                                                                  |
+| `src/workspace.ts`                                       | `workspace/prepare.ts`; use direct imports for reservation/removal helpers rather than re-exporting them from preparation.                                                                                             |
+| `src/workspace-usage.ts`                                 | `resources/storage.ts`; rename workspace-specific monitor terminology to storage terminology because auth staging also uses it. Preserve messages and behavior unless a separately reviewed change requires otherwise. |
+| `src/options.ts`                                         | Resource validation to `resources/limits.ts`; timeout validation to `execution/policy.ts`. Remove the old file.                                                                                                        |
+| `src/defaults.ts`                                        | Image default to `container/image.ts`; headless timeout to `execution/policy.ts`; resource defaults to `resources/limits.ts`. Remove the catch-all file.                                                               |
+| `src/types.ts`                                           | Move types to their owning domains, as below; retain their package exports through `index.ts`. Remove the catch-all file.                                                                                              |
+| `src/utils.ts`                                           | `validIdentifier` to `state/identifiers.ts`; `isInside` to `utils/paths.ts`; Podman mount-path validation to `container/mounts.ts`. Remove the old file.                                                               |
+| `src/utils/fs.ts`                                        | Keep generic I/O; move state-root functions to `state/paths.ts`, canonical path resolution to `utils/paths.ts`, and guarded quarantine removal to `state/removal.ts`.                                                  |
+| `src/agents.ts`, `src/dev-resources.ts` if still present | Complete their Plan 04 moves to `agents/`; do not preserve duplicate entry points.                                                                                                                                     |
 
 ### Type ownership
 
@@ -201,20 +201,20 @@ If moving this logic exposes a correctness issue, record and fix it with a focus
 
 No `src/*.test.ts` files remain when this plan is complete.
 
-| Current test group | Destination |
-| --- | --- |
-| `auth.test.ts` | `auth/profiles.test.ts`, `auth/staging.test.ts`, `auth/host.test.ts`, and `auth/recovery.test.ts`, partitioned by behavior; lock-specific cases beside `lock.ts`. |
-| `run.test.ts` | `execution/run.test.ts` for general outcomes; focused `execution/auth-lifecycle.test.ts`, `execution/cancellation.test.ts`, `execution/login.test.ts`, and `execution/retention.test.ts`. |
-| `prompt.test.ts` | `execution/prompt.test.ts`. |
-| `options.test.ts`, `run/options.test.ts` | `resources/limits.test.ts` and `execution/policy.test.ts`. |
-| `podman.test.ts` | `container/args.test.ts`, `environment.test.ts`, and `mounts.test.ts` by assertion responsibility. |
-| `preflight.test.ts` | `container/preflight.test.ts`. |
-| `podman.integration.test.ts` | `container/podman.integration.test.ts`. |
-| `workspace.test.ts` | `workspace/prepare.test.ts`, `git.test.ts`, and `remove.test.ts`; reservation-specific tests may stay beside `runs.ts`. |
-| `workspace-usage.test.ts` | `resources/storage.test.ts`. |
-| `utils.test.ts` | `utils/fs.test.ts` and `state/removal.test.ts`. |
-| `cli.test.ts` | `cli/bootstrap.test.ts` for hostile launch/runtime fixtures and `cli/app.test.ts` for parsing/dispatch. |
-| Already colocated tests | Keep them beside the owning module; update imports and fixture paths. |
+| Current test group                       | Destination                                                                                                                                                                               |
+| ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `auth.test.ts`                           | `auth/profiles.test.ts`, `auth/staging.test.ts`, `auth/host.test.ts`, and `auth/recovery.test.ts`, partitioned by behavior; lock-specific cases beside `lock.ts`.                         |
+| `run.test.ts`                            | `execution/run.test.ts` for general outcomes; focused `execution/auth-lifecycle.test.ts`, `execution/cancellation.test.ts`, `execution/login.test.ts`, and `execution/retention.test.ts`. |
+| `prompt.test.ts`                         | `execution/prompt.test.ts`.                                                                                                                                                               |
+| `options.test.ts`, `run/options.test.ts` | `resources/limits.test.ts` and `execution/policy.test.ts`.                                                                                                                                |
+| `podman.test.ts`                         | `container/args.test.ts`, `environment.test.ts`, and `mounts.test.ts` by assertion responsibility.                                                                                        |
+| `preflight.test.ts`                      | `container/preflight.test.ts`.                                                                                                                                                            |
+| `podman.integration.test.ts`             | `container/podman.integration.test.ts`.                                                                                                                                                   |
+| `workspace.test.ts`                      | `workspace/prepare.test.ts`, `git.test.ts`, and `remove.test.ts`; reservation-specific tests may stay beside `runs.ts`.                                                                   |
+| `workspace-usage.test.ts`                | `resources/storage.test.ts`.                                                                                                                                                              |
+| `utils.test.ts`                          | `utils/fs.test.ts` and `state/removal.test.ts`.                                                                                                                                           |
+| `cli.test.ts`                            | `cli/bootstrap.test.ts` for hostile launch/runtime fixtures and `cli/app.test.ts` for parsing/dispatch.                                                                                   |
+| Already colocated tests                  | Keep them beside the owning module; update imports and fixture paths.                                                                                                                     |
 
 Test helpers may create temporary state, supply fake Podman responses, and restore environment changes. They must not hide assertions such as “no host state was read,” “container absence was verified,” or “credential reconciliation occurred after removal.” Do not turn scenario fixtures into a mini mocking framework.
 
@@ -226,38 +226,26 @@ Update `import.meta.dir`-relative fixture paths after moves. Keep tests independ
 
 Update `docs/architecture.md` with the final directory map, dependency rules, and this task-oriented index:
 
-| Question | Start here |
-| --- | --- |
-| How does a run work? | `execution/run.ts`, then `execution/finalize.ts`. |
-| Where do defaults and source selection come from? | `execution/policy.ts`, `config/resolve.ts`. |
-| How do I add an agent? | `agents/contract.ts`, `agents/registry.ts`, then an existing adapter. |
-| Which native configuration is permitted? | `config/schema.ts`, then the selected agent's translation. |
-| What crosses the container boundary? | `container/args.ts`, `mounts.ts`, `environment.ts`. |
-| What happens after cancellation? | `container/lifecycle.ts`, then `execution/finalize.ts`. |
-| Who owns credentials and recovery? | `auth/staging.ts`, `lock.ts`, `recovery.ts`. |
-| Can this directory be deleted? | `workspace/remove.ts`, `runs.ts`, `state/removal.ts`. |
-| Where are budgets enforced? | `resources/limits.ts`, `storage.ts`. |
-| How does the host stay safe before container startup? | `bin/pi-pod`, `cli/bootstrap.ts`, `workspace/git.ts`. |
+| Question                                              | Start here                                                            |
+| ----------------------------------------------------- | --------------------------------------------------------------------- |
+| How does a run work?                                  | `execution/run.ts`, then `execution/finalize.ts`.                     |
+| Where do defaults and source selection come from?     | `execution/policy.ts`, `config/resolve.ts`.                           |
+| How do I add an agent?                                | `agents/contract.ts`, `agents/registry.ts`, then an existing adapter. |
+| Which native configuration is permitted?              | `config/schema.ts`, then the selected agent's translation.            |
+| What crosses the container boundary?                  | `container/args.ts`, `mounts.ts`, `environment.ts`.                   |
+| What happens after cancellation?                      | `container/lifecycle.ts`, then `execution/finalize.ts`.               |
+| Who owns credentials and recovery?                    | `auth/staging.ts`, `lock.ts`, `recovery.ts`.                          |
+| Can this directory be deleted?                        | `workspace/remove.ts`, `runs.ts`, `state/removal.ts`.                 |
+| Where are budgets enforced?                           | `resources/limits.ts`, `storage.ts`.                                  |
+| How does the host stay safe before container startup? | `bin/pi-pod`, `cli/bootstrap.ts`, `workspace/git.ts`.                 |
 
 Keep module-header comments short: responsibility, trust assumptions, and important callers. Do not add an identical README in every folder or force readers through a sequence of re-export files. Public API docs link to operations; contributor docs link to implementation owners.
 
 Update `AGENTS.md`, README links, `docs/development.md`, test commands, and any scripts that refer to moved files. Historical reviews keep their original locations as evidence; link them to the maintained architecture map rather than rewriting historical findings. A repository-wide search must classify remaining old paths as intentional history or fix them.
 
-### Mechanical checks
+### Manual layout review
 
-Add a small Bun/TypeScript structure check under `scripts/check-structure.ts` and expose it as `bun run check:structure`.
-
-It should verify:
-
-1. Only `cli.ts` is a runtime source file directly under `src/`; root tests and legacy facade files are absent.
-2. Runtime code never imports test helpers, tests, or the package public barrel.
-3. The domain dependency rules above hold, including forbidden upward imports.
-4. There are no runtime module cycles. Report type-only cycles separately; do not use them to conceal unclear ownership.
-5. The check discovers new source files rather than relying on a frozen list of existing files.
-
-Use the existing TypeScript tooling to inspect imports/re-exports where needed; do not add a dependency-injection framework or a new architecture toolchain. Keep the rule table readable. If legitimate dependencies fail a rule, review the boundary rather than accumulating unexplained exceptions.
-
-Exclude `src/test-support/**` and tests from packed runtime files. Verify packed artifacts actually contain the relocated code and maintained docs. The external launcher/bootstrap path and package-root export contract must continue to work from a hostile workspace.
+Review the root-layout and dependency-direction rules manually at each migration gate. Do not add a custom structure-check script, architecture checker, or replacement dependency for this plan. Verify package contents and hostile-launcher behavior with the existing tests and packaging smoke checks.
 
 ### Uniform formatting
 
@@ -336,12 +324,6 @@ git diff --check
 
 Use `mise exec -- bun run format` to apply formatting intentionally; run check mode at every subsequent gate. During Phase 0, establish the pre-format test/typecheck baseline before the formatting scripts exist.
 
-After introducing the structure check:
-
-```sh
-mise exec -- bun run check:structure
-```
-
 Run opt-in integrations only on a suitable host, using the relocated paths after migration:
 
 ```sh
@@ -363,7 +345,7 @@ Completion requires all of the following:
 - [ ] Storage enforcement is named for all its callers, not just workspaces.
 - [ ] Execution and finalization ordering is legible and behaviorally covered.
 - [ ] Maintained documentation and test commands point to real final paths.
-- [ ] Structure checks enforce the root layout and dependency rules.
+- [ ] Root layout and dependency direction are reviewed manually against the maintained map.
 - [ ] One exact-pinned formatter covers source, tests, examples, and documentation; `format:check` passes and formatting is idempotent.
 - [ ] The initial formatting pass was reviewed separately from structural/behavior changes, and formatter tooling is development-only.
 - [ ] Unit, adversarial, typecheck, packaging, and applicable integration results are recorded honestly.

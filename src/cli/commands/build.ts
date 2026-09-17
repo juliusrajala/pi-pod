@@ -1,6 +1,6 @@
 import { Crust } from "@crustjs/core";
 import { resolve } from "node:path";
-import { defaultImage } from "../../defaults.ts";
+import { defaultImage } from "../../container/image.ts";
 import { hostToolEnvironment } from "../../utils/process.ts";
 import { requireNoAgentArguments, requireNoExtraArguments } from "./validation.ts";
 
@@ -13,20 +13,23 @@ export const buildCommand = new Crust("build")
     requireNoAgentArguments(rawArgs, "build");
     const root = resolve(import.meta.dir, "..", "..", "..");
     const context = resolve(root, "container");
-    const process = Bun.spawn([
-      "podman",
-      "build",
-      "--tag",
-      flags.image,
-      "--file",
-      resolve(context, "Containerfile"),
-      context,
-    ], {
-      stdin: "inherit",
-      stdout: "inherit",
-      stderr: "inherit",
-      env: hostToolEnvironment(),
-    });
+    const process = Bun.spawn(
+      [
+        "podman",
+        "build",
+        "--tag",
+        flags.image,
+        "--file",
+        resolve(context, "Containerfile"),
+        context,
+      ],
+      {
+        stdin: "inherit",
+        stdout: "inherit",
+        stderr: "inherit",
+        env: hostToolEnvironment(),
+      },
+    );
     const exitCode = await process.exited;
     if (exitCode !== 0) throw new Error(`Image build exited with status ${exitCode}.`);
   });

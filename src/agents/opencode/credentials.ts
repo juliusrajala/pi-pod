@@ -4,15 +4,18 @@ import type { CredentialCodec } from "../contract.ts";
 export const openCodeCredentialCodec: CredentialCodec = {
   assertProvider: () => {},
   normalize(provider, value) {
-    if (!isRecord(value) || typeof value.type !== "string") throw new Error(`Invalid OpenCode credential for ${provider}.`);
+    if (!isRecord(value) || typeof value.type !== "string")
+      throw new Error(`Invalid OpenCode credential for ${provider}.`);
     if (value.type === "oauth") {
       assertOnlyKeys(value, ["type", "access", "refresh", "expires", "accountId", "enterpriseUrl"]);
       if (
-        typeof value.access !== "string" || typeof value.refresh !== "string" ||
+        typeof value.access !== "string" ||
+        typeof value.refresh !== "string" ||
         !isNonNegativeInteger(value.expires) ||
         (value.accountId !== undefined && typeof value.accountId !== "string") ||
         (value.enterpriseUrl !== undefined && typeof value.enterpriseUrl !== "string")
-      ) throw new Error(`Invalid OpenCode OAuth credential for ${provider}.`);
+      )
+        throw new Error(`Invalid OpenCode OAuth credential for ${provider}.`);
       return {
         type: "oauth",
         access: value.access,
@@ -27,7 +30,11 @@ export const openCodeCredentialCodec: CredentialCodec = {
       if (typeof value.key !== "string" || !isStringRecord(value.metadata)) {
         throw new Error(`Invalid OpenCode API credential for ${provider}.`);
       }
-      return { type: "api", key: value.key, ...(value.metadata === undefined ? {} : { metadata: value.metadata }) };
+      return {
+        type: "api",
+        key: value.key,
+        ...(value.metadata === undefined ? {} : { metadata: value.metadata }),
+      };
     }
     if (value.type === "wellknown") {
       assertOnlyKeys(value, ["type", "key", "token"]);
@@ -41,11 +48,15 @@ export const openCodeCredentialCodec: CredentialCodec = {
 };
 
 function assertOnlyKeys(value: Record<string, unknown>, allowed: readonly string[]): void {
-  if (Object.keys(value).some((key) => !allowed.includes(key))) throw new Error("Credential contains unsupported fields.");
+  if (Object.keys(value).some((key) => !allowed.includes(key)))
+    throw new Error("Credential contains unsupported fields.");
 }
 
 function isStringRecord(value: unknown): value is Record<string, string> | undefined {
-  return value === undefined || (isRecord(value) && Object.values(value).every((entry) => typeof entry === "string"));
+  return (
+    value === undefined ||
+    (isRecord(value) && Object.values(value).every((entry) => typeof entry === "string"))
+  );
 }
 
 function isNonNegativeInteger(value: unknown): value is number {

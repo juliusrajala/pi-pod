@@ -4,7 +4,15 @@ export type ModelPreference = {
   id: string;
 };
 
-export const piThinkingLevels = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
+export const piThinkingLevels = [
+  "off",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+] as const;
 export type PiThinkingLevel = (typeof piThinkingLevels)[number];
 
 export type PiAgentPreferences = {
@@ -21,9 +29,16 @@ export type OpenCodeAgentPreferences = {
 /** Validated preferences for one selected agent and one selected mode. */
 export type AgentPreferences = PiAgentPreferences | OpenCodeAgentPreferences;
 
-export function assertModelPreference(value: unknown, field = "model"): asserts value is ModelPreference {
-  if (!isRecord(value) || !hasOnlyKeys(value, ["provider", "id"]) ||
-    !isBoundedNonemptyString(value.provider) || !isBoundedNonemptyString(value.id)) {
+export function assertModelPreference(
+  value: unknown,
+  field = "model",
+): asserts value is ModelPreference {
+  if (
+    !isRecord(value) ||
+    !hasOnlyKeys(value, ["provider", "id"]) ||
+    !isBoundedNonemptyString(value.provider) ||
+    !isBoundedNonemptyString(value.id)
+  ) {
     throw new Error(`${field} requires nonempty provider and id strings.`);
   }
 }

@@ -8,19 +8,13 @@ import {
 } from "../../config/types.ts";
 import { openCodeCredentialCodec } from "./credentials.ts";
 
-function validatePreferences(
-  agentPreferences: AgentPreferences,
-): OpenCodeAgentPreferences {
+function validatePreferences(agentPreferences: AgentPreferences): OpenCodeAgentPreferences {
   if (!isRecord(agentPreferences)) {
     throw new Error("Agent preferences should be an object");
   }
 
-  if (
-    !Object.keys(agentPreferences).some(
-      (key) => key !== "model" && key !== "variant",
-    )
-  ) {
-    throw new Error("Missing reference variants.");
+  if (Object.keys(agentPreferences).some((key) => key !== "model" && key !== "variant")) {
+    throw new Error("OpenCode preferences support only model and variant.");
   }
 
   return agentPreferences;
@@ -53,21 +47,15 @@ export const openCodeDefinition: AgentDefinition = {
     if (validPreferences.model !== undefined) {
       assertModelPreference(validPreferences.model, "OpenCode model");
       if (!hasAnyFlag(agentArgs, ["--model", "-m"])) {
-        args.push(
-          "--model",
-          `${validPreferences.model.provider}/${validPreferences.model.id}`,
-        );
+        args.push("--model", `${validPreferences.model.provider}/${validPreferences.model.id}`);
       }
     }
     const variant = (validPreferences as { variant?: unknown }).variant;
     if (variant !== undefined) {
       if (!isBoundedNonemptyString(variant, 128)) {
-        throw new Error(
-          "OpenCode variant must be a nonempty string up to 128 characters.",
-        );
+        throw new Error("OpenCode variant must be a nonempty string up to 128 characters.");
       }
-      if (!hasAnyFlag(agentArgs, ["--variant"]))
-        args.push("--variant", variant);
+      if (!hasAnyFlag(agentArgs, ["--variant"])) args.push("--variant", variant);
     }
     return args;
   },
@@ -77,30 +65,15 @@ export const openCodeDefinition: AgentDefinition = {
       : promptPath === undefined
         ? ["opencode", "run", "--pure", "--auto", ...agentArgs, ""]
         : promptFileCommand(promptPath, agentArgs),
-  loginCommand: (provider) => [
-    "opencode",
-    "auth",
-    "login",
-    "--provider",
-    provider,
-  ],
-  loginInstructions: (provider) =>
-    `Complete OpenCode's native login for ${provider}.`,
+  loginCommand: (provider) => ["opencode", "auth", "login", "--provider", provider],
+  loginInstructions: (provider) => `Complete OpenCode's native login for ${provider}.`,
 };
 
-function hasAnyFlag(
-  args: readonly string[],
-  names: readonly string[],
-): boolean {
-  return args.some((arg) =>
-    names.some((name) => arg === name || arg.startsWith(`${name}=`)),
-  );
+function hasAnyFlag(args: readonly string[], names: readonly string[]): boolean {
+  return args.some((arg) => names.some((name) => arg === name || arg.startsWith(`${name}=`)));
 }
 
-function promptFileCommand(
-  promptPath: string,
-  agentArgs: readonly string[],
-): string[] {
+function promptFileCommand(promptPath: string, agentArgs: readonly string[]): string[] {
   // Appending a sentinel prevents command substitution from dropping prompt
   // trailing newlines. Neither prompt text nor agent arguments are interpolated.
   return [

@@ -1,4 +1,4 @@
-import type { OutputSinks } from "../types.ts";
+import type { OutputSinks } from "../execution/types.ts";
 import { hostToolEnvironment } from "../utils/process.ts";
 
 const pollIntervalMs = 50;
@@ -42,25 +42,37 @@ export async function runPodmanContainer(input: {
   let outputError: string | undefined;
   const outputDone = usePipes
     ? Promise.all([
-      pipeOutput(process.stdout as ReadableStream<Uint8Array>, input.output?.stdout ?? terminalSink(Bun.stdout)),
-      pipeOutput(process.stderr as ReadableStream<Uint8Array>, input.output?.stderr ?? terminalSink(Bun.stderr)),
-    ]).catch((error) => {
-      outputError = errorMessage(error);
-      // A failed sink must not leave an attached client blocked on a full pipe.
-      try {
-        process.kill("SIGTERM");
-      } catch {
-        // The client may have exited between pipe failure and this signal.
-      }
-    })
+        pipeOutput(
+          process.stdout as ReadableStream<Uint8Array>,
+          input.output?.stdout ?? terminalSink(Bun.stdout),
+        ),
+        pipeOutput(
+          process.stderr as ReadableStream<Uint8Array>,
+          input.output?.stderr ?? terminalSink(Bun.stderr),
+        ),
+      ]).catch((error) => {
+        outputError = errorMessage(error);
+        // A failed sink must not leave an attached client blocked on a full pipe.
+        try {
+          process.kill("SIGTERM");
+        } catch {
+          // The client may have exited between pipe failure and this signal.
+        }
+      })
     : Promise.resolve();
 
   let clientExited = false;
-  void process.exited.then(() => { clientExited = true; });
+  void process.exited.then(() => {
+    clientExited = true;
+  });
   let abortCleanup: Promise<ContainerCleanup> | undefined;
   const abort = () => {
     if (abortCleanup !== undefined) return;
-    abortCleanup = terminateAfterAbort({ process, name: input.name, clientExited: () => clientExited });
+    abortCleanup = terminateAfterAbort({
+      process,
+      name: input.name,
+      clientExited: () => clientExited,
+    });
   };
   input.signal?.addEventListener("abort", abort, { once: true });
   if (input.signal?.aborted) abort();
@@ -71,13 +83,27 @@ export async function runPodmanContainer(input: {
     await outputDone;
     if (abortCleanup !== undefined) {
       const cleanup = await abortCleanup;
-      if (!cleanup.removed) input.onDiagnostic?.(cleanup.error ?? `Could not verify removal of container ${input.name}.`);
-      return { exitCode, aborted: true, cleanup, ...(outputError === undefined ? {} : { outputError }) };
+      if (!cleanup.removed)
+        input.onDiagnostic?.(
+          cleanup.error ?? `Could not verify removal of container ${input.name}.`,
+        );
+      return {
+        exitCode,
+        aborted: true,
+        cleanup,
+        ...(outputError === undefined ? {} : { outputError }),
+      };
     }
 
     const cleanup = await removeLeftoverContainer(input.name);
-    if (!cleanup.removed) input.onDiagnostic?.(cleanup.error ?? `Could not verify removal of container ${input.name}.`);
-    return { exitCode, aborted: false, cleanup, ...(outputError === undefined ? {} : { outputError }) };
+    if (!cleanup.removed)
+      input.onDiagnostic?.(cleanup.error ?? `Could not verify removal of container ${input.name}.`);
+    return {
+      exitCode,
+      aborted: false,
+      cleanup,
+      ...(outputError === undefined ? {} : { outputError }),
+    };
   } finally {
     input.signal?.removeEventListener("abort", abort);
   }
@@ -88,7 +114,9 @@ export async function managedContainerExists(name: string): Promise<boolean> {
   const result = await podmanCommand(["container", "exists", name]);
   if (result === 0) return true;
   if (result === 1) return false;
-  throw new Error(`Could not determine whether container ${name} exists (podman exited ${result}).`);
+  throw new Error(
+    `Could not determine whether container ${name} exists (podman exited ${result}).`,
+  );
 }
 
 async function terminateAfterAbort(input: {
@@ -110,13 +138,19 @@ async function terminateAfterAbort(input: {
       }
       await Bun.sleep(pollIntervalMs);
     }
-    return { removed: false, error: `Timed out waiting to verify removal of container ${input.name}.` };
+    return {
+      removed: false,
+      error: `Timed out waiting to verify removal of container ${input.name}.`,
+    };
   } catch (error) {
     return { removed: false, error: errorMessage(error) };
   }
 }
 
-async function removeLeftoverContainer(name: string, deadline = Date.now() + cleanupTimeoutMs): Promise<ContainerCleanup> {
+async function removeLeftoverContainer(
+  name: string,
+  deadline = Date.now() + cleanupTimeoutMs,
+): Promise<ContainerCleanup> {
   try {
     if (!(await managedContainerExists(name))) return { removed: true };
     return stopAndRemove(name, deadline);
@@ -144,7 +178,10 @@ async function waitForRemoval(name: string, deadline: number): Promise<Container
   return { removed: false, error: `Timed out waiting for Podman to remove container ${name}.` };
 }
 
-async function podmanCommand(args: readonly string[], deadline = Date.now() + commandTimeoutMs): Promise<number> {
+async function podmanCommand(
+  args: readonly string[],
+  deadline = Date.now() + commandTimeoutMs,
+): Promise<number> {
   const remainingMs = deadline - Date.now();
   if (remainingMs <= 0) throw new Error(`Timed out before podman ${args[0]} could run.`);
   const process = Bun.spawn(["podman", ...args], {
@@ -169,7 +206,10 @@ function terminalSink(file: Bun.BunFile): WritableStream<Uint8Array> {
   });
 }
 
-async function pipeOutput(source: ReadableStream<Uint8Array>, destination: WritableStream<Uint8Array>): Promise<void> {
+async function pipeOutput(
+  source: ReadableStream<Uint8Array>,
+  destination: WritableStream<Uint8Array>,
+): Promise<void> {
   await source.pipeTo(destination, { preventClose: true });
 }
 

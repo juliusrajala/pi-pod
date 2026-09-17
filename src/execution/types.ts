@@ -1,6 +1,6 @@
-import { agentNames } from "./agents/registry.ts";
-import type { AgentPreferences } from "./config/types.ts";
-import type { AgentName } from "./agents/registry.ts";
+import { agentNames } from "../agents/registry.ts";
+import type { AgentPreferences } from "../config/types.ts";
+import type { AgentName } from "../agents/registry.ts";
 
 export const agents = agentNames;
 export type { AgentName };

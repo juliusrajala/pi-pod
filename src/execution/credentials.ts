@@ -5,9 +5,9 @@ import {
   recoverPendingAuthStages,
   stageAuthProfile,
   stageHostAuth,
-} from "../auth.ts";
+} from "../auth/recovery.ts";
 import { agentDefinition } from "../agents/registry.ts";
-import type { AgentName, AuthOutcome, RunMode } from "../types.ts";
+import type { AgentName, AuthOutcome, RunMode } from "./types.ts";
 
 export type CredentialSource = "host" | "profile" | "none";
 
@@ -23,14 +23,17 @@ export function resolveCredentialSource(input: {
   mode: RunMode;
   authProfile?: string | "none";
 }): { source: CredentialSource; profileName?: string } {
-  const defaultSource = input.mode === "interactive"
-    ? agentDefinition(input.agent).hostAuth === undefined
-      ? undefined
-      : "host"
-    : "default";
+  const defaultSource =
+    input.mode === "interactive"
+      ? agentDefinition(input.agent).hostAuth === undefined
+        ? undefined
+        : "host"
+      : "default";
   const requested = input.authProfile ?? defaultSource;
   if (requested === undefined) {
-    throw new Error(`${input.agent} has no reviewed host-auth capability; use --auth <profile> or --auth none with an explicit API-key environment variable.`);
+    throw new Error(
+      `${input.agent} has no reviewed host-auth capability; use --auth <profile> or --auth none with an explicit API-key environment variable.`,
+    );
   }
   if (requested === "host") {
     if (input.mode !== "interactive") {
@@ -60,7 +63,9 @@ export async function stageCredentialSource(input: {
   if (input.source === "host") {
     const hostAuth = agentDefinition(input.agent).hostAuth;
     if (hostAuth === undefined) {
-      throw new Error(`${input.agent} does not support interactive host authentication; use --auth <profile> or --auth none with an explicit API-key environment variable.`);
+      throw new Error(
+        `${input.agent} does not support interactive host authentication; use --auth <profile> or --auth none with an explicit API-key environment variable.`,
+      );
     }
     await recoverHostAuthStages(hostAuth.source);
     return {

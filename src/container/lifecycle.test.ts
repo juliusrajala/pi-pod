@@ -12,7 +12,9 @@ test("waits for a delayed container creation before terminating an aborted run",
   const trace = join(root, "trace");
   const container = join(root, "container-exists");
   await mkdir(bin);
-  await writeFile(join(bin, "podman"), `#!/bin/sh
+  await writeFile(
+    join(bin, "podman"),
+    `#!/bin/sh
 printf '%s\\n' "$1" >> ${shellQuote(trace)}
 case "$1" in
   run)
@@ -24,7 +26,9 @@ case "$1" in
   container) test -e ${shellQuote(container)} ;;
   stop|kill|rm) rm -f ${shellQuote(container)} ;;
 esac
-`, { mode: 0o700 });
+`,
+    { mode: 0o700 },
+  );
 
   Bun.env.PATH = `${bin}:${originalPath ?? ""}`;
   try {
@@ -57,14 +61,18 @@ test("removes a container left behind after the attached client exits", async ()
   const trace = join(root, "trace");
   const container = join(root, "container-exists");
   await mkdir(bin);
-  await writeFile(join(bin, "podman"), `#!/bin/sh
+  await writeFile(
+    join(bin, "podman"),
+    `#!/bin/sh
 printf '%s\\n' "$1" >> ${shellQuote(trace)}
 case "$1" in
   run) touch ${shellQuote(container)} ;;
   container) test -e ${shellQuote(container)} ;;
   stop|kill|rm) rm -f ${shellQuote(container)} ;;
 esac
-`, { mode: 0o700 });
+`,
+    { mode: 0o700 },
+  );
   Bun.env.PATH = `${bin}:${originalPath ?? ""}`;
   try {
     const result = await runPodmanContainer({
@@ -88,12 +96,16 @@ test("streams attached client output to caller-provided sinks", async () => {
   const root = await mkdtemp(join(tmpdir(), "pi-pod-lifecycle-output-"));
   const bin = join(root, "bin");
   await mkdir(bin);
-  await writeFile(join(bin, "podman"), `#!/bin/sh
+  await writeFile(
+    join(bin, "podman"),
+    `#!/bin/sh
 case "$1" in
   run) printf 'agent stdout'; printf 'agent stderr' >&2 ;;
   container) exit 1 ;;
 esac
-`, { mode: 0o700 });
+`,
+    { mode: 0o700 },
+  );
   const previousPath = Bun.env.PATH;
   Bun.env.PATH = `${bin}:${previousPath ?? ""}`;
   const stdout: Uint8Array[] = [];
@@ -104,8 +116,16 @@ esac
       name: "fixture",
       environment: { PATH: Bun.env.PATH },
       output: {
-        stdout: new WritableStream({ write: (chunk) => { stdout.push(new Uint8Array(chunk)); } }),
-        stderr: new WritableStream({ write: (chunk) => { stderr.push(new Uint8Array(chunk)); } }),
+        stdout: new WritableStream({
+          write: (chunk) => {
+            stdout.push(new Uint8Array(chunk));
+          },
+        }),
+        stderr: new WritableStream({
+          write: (chunk) => {
+            stderr.push(new Uint8Array(chunk));
+          },
+        }),
       },
     });
 
@@ -123,12 +143,16 @@ test("reports a failed output sink after removing the container", async () => {
   const root = await mkdtemp(join(tmpdir(), "pi-pod-lifecycle-sink-"));
   const bin = join(root, "bin");
   await mkdir(bin);
-  await writeFile(join(bin, "podman"), `#!/bin/sh
+  await writeFile(
+    join(bin, "podman"),
+    `#!/bin/sh
 case "$1" in
   run) printf 'agent stdout' ;;
   container) exit 1 ;;
 esac
-`, { mode: 0o700 });
+`,
+    { mode: 0o700 },
+  );
   const previousPath = Bun.env.PATH;
   Bun.env.PATH = `${bin}:${previousPath ?? ""}`;
   try {
@@ -137,7 +161,11 @@ esac
       name: "fixture",
       environment: { PATH: Bun.env.PATH },
       output: {
-        stdout: new WritableStream({ write: () => { throw new Error("sink failed"); } }),
+        stdout: new WritableStream({
+          write: () => {
+            throw new Error("sink failed");
+          },
+        }),
         stderr: new WritableStream({ write: () => {} }),
       },
     });

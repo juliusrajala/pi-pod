@@ -23,7 +23,8 @@ export function createAgentRegistry<Name extends string>(
   for (const definition of definitions) {
     const name = definition.id as Name;
     if (!names.includes(name)) throw new Error(`Unknown agent definition: ${definition.id}`);
-    if (registry[name] !== undefined) throw new Error(`Duplicate agent definition: ${definition.id}`);
+    if (registry[name] !== undefined)
+      throw new Error(`Duplicate agent definition: ${definition.id}`);
     registry[name] = definition;
   }
   for (const name of names) {

@@ -1,6 +1,10 @@
 import { Crust } from "@crustjs/core";
-import { discardPendingAuthStages, recoverAuthProfile, removeAuthProfileLock } from "../../auth.ts";
-import { agents, type AgentName } from "../../types.ts";
+import {
+  discardPendingAuthStages,
+  recoverAuthProfile,
+  removeAuthProfileLock,
+} from "../../auth/recovery.ts";
+import { agents, type AgentName } from "../../execution/types.ts";
 import { requireNoAgentArguments, requireNoExtraArguments } from "./validation.ts";
 
 const actions = ["recover", "discard", "unlock"] as const;

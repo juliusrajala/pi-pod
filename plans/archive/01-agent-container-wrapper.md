@@ -1,6 +1,6 @@
 # Agent container wrapper: implementation plan
 
-**Status: historical implementation record.** The documented wrapper, image, local clone, staged credentials, CLI, and automated tests were implemented in later checkpoints; user-assisted real-account login/refresh remains a manual validation. No orchestrator changes were made. Current behavior and maintained limits are in [the documentation index](../docs/README.md); this plan preserves its original decisions and proposals.
+**Status: historical implementation record.** The documented wrapper, image, local clone, staged credentials, CLI, and automated tests were implemented in later checkpoints; user-assisted real-account login/refresh remains a manual validation. No orchestrator changes were made. Current behavior and maintained limits are in [the documentation index](../../docs/README.md); this plan preserves its original decisions and proposals.
 
 ## Goal
 
@@ -12,14 +12,14 @@ The module owns the execution boundary: workspace preparation, container configu
 
 I inspected `../home-infra/agent-orchestrator/`, especially:
 
-| Existing file | Responsibility | Proposed disposition |
-| --- | --- | --- |
-| `Containerfile.pi-runner` | Node, Bun, Git, shell tools, Pi | Adapt into a standalone runner image |
-| `src/orchestration/runner.ts` | Hardened Podman arguments and process launch | Extract the general behavior |
-| `src/orchestration/repository.ts` | Disposable clone, remote branch selection, publishing prerequisites | Reuse the independent-clone idea; leave remote/publishing policy behind |
-| `src/orchestration/workspaceUsage.ts` | Aggregate disk-usage monitoring | Adapt, retaining its explicit limitations |
-| `scripts/runner-entrypoint.sh` | Runs Pi, commits changes, exports patches | Do not copy wholesale; automatic commits are inappropriate for a general local wrapper |
-| `src/orchestration/jobs.ts`, `github.ts` | Job history, timeouts, recovery, draft PR publishing | Leave in the orchestrator; extract only generic timeout/termination behavior |
+| Existing file                            | Responsibility                                                      | Proposed disposition                                                                   |
+| ---------------------------------------- | ------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `Containerfile.pi-runner`                | Node, Bun, Git, shell tools, Pi                                     | Adapt into a standalone runner image                                                   |
+| `src/orchestration/runner.ts`            | Hardened Podman arguments and process launch                        | Extract the general behavior                                                           |
+| `src/orchestration/repository.ts`        | Disposable clone, remote branch selection, publishing prerequisites | Reuse the independent-clone idea; leave remote/publishing policy behind                |
+| `src/orchestration/workspaceUsage.ts`    | Aggregate disk-usage monitoring                                     | Adapt, retaining its explicit limitations                                              |
+| `scripts/runner-entrypoint.sh`           | Runs Pi, commits changes, exports patches                           | Do not copy wholesale; automatic commits are inappropriate for a general local wrapper |
+| `src/orchestration/jobs.ts`, `github.ts` | Job history, timeouts, recovery, draft PR publishing                | Leave in the orchestrator; extract only generic timeout/termination behavior           |
 
 The current temporary workspace is a **fresh clone from the remote at a recorded commit**, not a snapshot of the local folder. It requires a clean source checkout and GitHub publishing credentials. Those requirements should not become requirements for using this module locally.
 
@@ -155,13 +155,13 @@ Inspection of its source and example configuration—not private auth files—su
 
 The package is separate from credentials and should remain separate from `pi-pod`:
 
-| Resource | Container implication |
-| --- | --- |
-| `auto-model.ts` | Portable model selection; optional interactive customization. Its disabled-repository list uses host absolute paths and its config path is under `HOME`, so blindly copying host settings will not preserve that behavior at `/workspace`. |
-| `git-operation-permission.ts` | Useful optional interactive confirmation. It intentionally denies commits/pushes without a UI, so do not load it into automated runs by default. Its shell matching is a convenience guard, not the containment boundary. |
-| `omarchy-system-theme.ts` | Reads a desktop theme marker under host configuration. Leave it out; use a container-local Pi theme rather than mounting desktop configuration. |
-| `pi-usage-analytics.ts` and report skill | Need persistent analytics and, for some reports, session data. Leave disabled until persistence is explicitly designed; credential persistence does not provide analytics persistence. |
-| `swarmia-ai-usage.ts` | Needs a separate token and uploads usage. Do not import its configuration, forward its token, or enable reporting automatically. |
+| Resource                                 | Container implication                                                                                                                                                                                                                      |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `auto-model.ts`                          | Portable model selection; optional interactive customization. Its disabled-repository list uses host absolute paths and its config path is under `HOME`, so blindly copying host settings will not preserve that behavior at `/workspace`. |
+| `git-operation-permission.ts`            | Useful optional interactive confirmation. It intentionally denies commits/pushes without a UI, so do not load it into automated runs by default. Its shell matching is a convenience guard, not the containment boundary.                  |
+| `omarchy-system-theme.ts`                | Reads a desktop theme marker under host configuration. Leave it out; use a container-local Pi theme rather than mounting desktop configuration.                                                                                            |
+| `pi-usage-analytics.ts` and report skill | Need persistent analytics and, for some reports, session data. Leave disabled until persistence is explicitly designed; credential persistence does not provide analytics persistence.                                                     |
+| `swarmia-ai-usage.ts`                    | Needs a separate token and uploads usage. Do not import its configuration, forward its token, or enable reporting automatically.                                                                                                           |
 
 The manifest discovers all extensions, while `config/settings.json.example` filters them. Consequently, loading the package root is not equivalent to preserving the user's selected extensions. The example also does not prove which resources are currently enabled.
 

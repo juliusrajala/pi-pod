@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
-import { buildPodmanRunArgs, podmanEnvironment } from "./podman.ts";
-import { defaultResourceLimits } from "./defaults.ts";
+import { buildPodmanRunArgs, podmanEnvironment } from "./args.ts";
+import { defaultResourceLimits } from "./image.ts";
 
 const originalOpenAi = Bun.env.OPENAI_API_KEY;
 const originalGitHub = Bun.env.GITHUB_TOKEN;
@@ -49,9 +49,15 @@ test("constructs a least-privilege run with explicit mounts and environment", ()
   expect(args).toContain("PI_POD_CONTAINER=1");
   expect(args).toContain("OPENAI_API_KEY");
   expect(args).toContain("io.pi-pod.run-id=run-1");
-  expect(args).toContain("type=bind,src=/state/runs/run-1/workspace,dst=/workspace,rw,relabel=private");
-  expect(args).toContain("type=bind,src=/state/auth-stage,dst=/home/agent/.pi/agent,rw,relabel=private");
-  expect(args).toContain("type=bind,src=/state/prompt.txt,dst=/run/pi-pod-prompt,ro,relabel=private");
+  expect(args).toContain(
+    "type=bind,src=/state/runs/run-1/workspace,dst=/workspace,rw,relabel=private",
+  );
+  expect(args).toContain(
+    "type=bind,src=/state/auth-stage,dst=/home/agent/.pi/agent,rw,relabel=private",
+  );
+  expect(args).toContain(
+    "type=bind,src=/state/prompt.txt,dst=/run/pi-pod-prompt,ro,relabel=private",
+  );
   expect(args.join(" ")).toContain("--no-context-files");
   expect(args.join(" ")).toContain("--no-approve");
   expect(args.join(" ")).not.toContain("fake-key");
@@ -73,7 +79,9 @@ test("uses a separate writable OpenCode auth-state mount", () => {
     network: "none",
     tty: false,
   });
-  expect(args).toContain("type=bind,src=/state/opencode-state,dst=/home/agent/.local/share/opencode,rw,relabel=private");
+  expect(args).toContain(
+    "type=bind,src=/state/opencode-state,dst=/home/agent/.local/share/opencode,rw,relabel=private",
+  );
   expect(args.join(" ")).toContain("exec opencode run");
   expect(args.join(" ")).toContain("--pure");
   expect(args).not.toContain("OPENCODE_DISABLE_DEFAULT_PLUGINS=true");
@@ -87,7 +95,9 @@ test("mounts trusted interactive Pi extensions read-only without relabeling host
     authDirectory: "/state/auth",
     extensionsDirectory: "/home/dev/.pi/agent/extensions",
     extensionSettingsFile: "/state/dev-settings.json",
-    extensionPackageMounts: [{ source: "/home/dev/pi-files", destination: "/run/pi-pod-dev-resources/package-0" }],
+    extensionPackageMounts: [
+      { source: "/home/dev/pi-files", destination: "/run/pi-pod-dev-resources/package-0" },
+    ],
     agentArgs: [],
     environment: [],
     image: "image",
@@ -97,10 +107,18 @@ test("mounts trusted interactive Pi extensions read-only without relabeling host
     tty: true,
   });
 
-  expect(args).toContain("type=bind,src=/home/dev/.pi/agent/extensions,dst=/home/agent/.pi/agent/extensions,ro");
-  expect(args).not.toContain("type=bind,src=/home/dev/.pi/agent/extensions,dst=/home/agent/.pi/agent/extensions,ro,relabel=private");
-  expect(args).toContain("type=bind,src=/state/dev-settings.json,dst=/home/agent/.pi/agent/settings.json,ro,relabel=private");
-  expect(args).toContain("type=bind,src=/home/dev/pi-files,dst=/run/pi-pod-dev-resources/package-0,ro");
+  expect(args).toContain(
+    "type=bind,src=/home/dev/.pi/agent/extensions,dst=/home/agent/.pi/agent/extensions,ro",
+  );
+  expect(args).not.toContain(
+    "type=bind,src=/home/dev/.pi/agent/extensions,dst=/home/agent/.pi/agent/extensions,ro,relabel=private",
+  );
+  expect(args).toContain(
+    "type=bind,src=/state/dev-settings.json,dst=/home/agent/.pi/agent/settings.json,ro,relabel=private",
+  );
+  expect(args).toContain(
+    "type=bind,src=/home/dev/pi-files,dst=/run/pi-pod-dev-resources/package-0,ro",
+  );
   expect(args.join(" ")).not.toContain("--no-extensions");
 });
 
@@ -177,17 +195,19 @@ test("rejects forge, SSH, database, proxy, and unrelated credential names", () =
   ];
   for (const name of forbidden) {
     expect(() => podmanEnvironment([name])).toThrow("never forwarded");
-    expect(() => buildPodmanRunArgs({
-      agent: "pi",
-      mode: "headless",
-      workspace: { path: "/workspace", relabel: false },
-      agentArgs: [],
-      environment: [name],
-      image: "image",
-      containerName: "container",
-      limits: defaultResourceLimits,
-      network: "none",
-      tty: false,
-    })).toThrow("never forwarded");
+    expect(() =>
+      buildPodmanRunArgs({
+        agent: "pi",
+        mode: "headless",
+        workspace: { path: "/workspace", relabel: false },
+        agentArgs: [],
+        environment: [name],
+        image: "image",
+        containerName: "container",
+        limits: defaultResourceLimits,
+        network: "none",
+        tty: false,
+      }),
+    ).toThrow("never forwarded");
   }
 });

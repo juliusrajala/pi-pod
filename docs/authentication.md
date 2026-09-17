@@ -2,11 +2,11 @@
 
 pi-pod supports three distinct sources. They are not interchangeable settings bundles.
 
-| Source | `dev` | `run` | Ownership and lifecycle |
-| --- | --- | --- | --- |
-| `host` | Default for Pi and OpenCode | Rejected | Reads and stages one selected host credential privately. It never mounts or writes host agent state back. |
-| Named profile | Explicit `--auth <profile>` | Default profile is `default` | pi-pod-owned selected-provider credentials under `$XDG_STATE_HOME/pi-pod/auth/` (or `~/.local/state/pi-pod/auth/`). One container uses a profile at a time. |
-| `none` plus `--env NAME` | Yes | Yes | A trusted caller explicitly forwards one allowed API-key variable through the Podman client environment, not argv. |
+| Source                   | `dev`                       | `run`                        | Ownership and lifecycle                                                                                                                                     |
+| ------------------------ | --------------------------- | ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `host`                   | Default for Pi and OpenCode | Rejected                     | Reads and stages one selected host credential privately. It never mounts or writes host agent state back.                                                   |
+| Named profile            | Explicit `--auth <profile>` | Default profile is `default` | pi-pod-owned selected-provider credentials under `$XDG_STATE_HOME/pi-pod/auth/` (or `~/.local/state/pi-pod/auth/`). One container uses a profile at a time. |
+| `none` plus `--env NAME` | Yes                         | Yes                          | A trusted caller explicitly forwards one allowed API-key variable through the Podman client environment, not argv.                                          |
 
 ## Profiles and recovery
 
@@ -21,13 +21,13 @@ Create a profile only when a provider needs native subscription login:
 
 Use recovery only when the command reports an interrupted stage and verifies its recorded container is absent. `discard` removes an unwanted retained stage; `unlock` removes only a stale lock whose PID and exact container are gone. Do not delete the auth state tree as a troubleshooting shortcut.
 
-| Outcome | Workspace | Auth stage/profile lock |
-| --- | --- | --- |
-| Normal exit or nonzero agent exit after verified container removal | Clone retained; bind untouched | Selected profile credential is reconciled; stage is removed and lock released. Host stage is discarded without copy-back. |
-| Timeout or abort after verified container removal | Clone retained; bind untouched | Same reconciliation/discard path applies. |
-| Setup failure before launch | Acquired clone preparation is removed; bind untouched | Any acquired lock is released; no completed execution result is returned. |
-| Container removal cannot be verified | Clone reservation retained | Credential, prompt, and resource stages remain private; profile lock remains retained. |
-| Credential reconciliation fails | Clone retained | Private stage is retained for guarded recovery; the result/CLI reports recovery is needed. |
+| Outcome                                                            | Workspace                                             | Auth stage/profile lock                                                                                                   |
+| ------------------------------------------------------------------ | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| Normal exit or nonzero agent exit after verified container removal | Clone retained; bind untouched                        | Selected profile credential is reconciled; stage is removed and lock released. Host stage is discarded without copy-back. |
+| Timeout or abort after verified container removal                  | Clone retained; bind untouched                        | Same reconciliation/discard path applies.                                                                                 |
+| Setup failure before launch                                        | Acquired clone preparation is removed; bind untouched | Any acquired lock is released; no completed execution result is returned.                                                 |
+| Container removal cannot be verified                               | Clone reservation retained                            | Credential, prompt, and resource stages remain private; profile lock remains retained.                                    |
+| Credential reconciliation fails                                    | Clone retained                                        | Private stage is retained for guarded recovery; the result/CLI reports recovery is needed.                                |
 
 ## API keys
 

@@ -2,10 +2,10 @@ import { expect, test } from "bun:test";
 import { chmod, lstat, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { createAuthProfile } from "./auth.ts";
+import { createAuthProfile } from "../auth/recovery.ts";
 import { login } from "./login.ts";
 import { runAgent } from "./run.ts";
-import { removeRun } from "./workspace.ts";
+import { removeRun } from "../workspace/runs.ts";
 
 async function withFakePodman(action: (root: string) => Promise<void>): Promise<void> {
   const root = await mkdtemp(join(tmpdir(), "pi-pod-run-"));
@@ -14,14 +14,17 @@ async function withFakePodman(action: (root: string) => Promise<void>): Promise<
   const previousStateHome = Bun.env.XDG_STATE_HOME;
   try {
     await mkdir(bin);
-    await writeFile(join(bin, "podman"), `#!/bin/sh
+    await writeFile(
+      join(bin, "podman"),
+      `#!/bin/sh
 case "$1" in
   info) printf '%s\\n' '{"host":{"os":"linux","cgroupVersion":"v2","cgroupControllers":["cpu","memory","pids"],"serviceIsRemote":false,"security":{"rootless":true}}}' ;;
   run) printf 'fixture stdout'; exit 0 ;;
   container) exit 1 ;;
   *) exit 1 ;;
 esac
-`);
+`,
+    );
     await chmod(join(bin, "podman"), 0o755);
     Bun.env.PATH = `${bin}:${previousPath}`;
     Bun.env.XDG_STATE_HOME = join(root, "state");
@@ -38,22 +41,28 @@ esac
 test("does not stage state or invoke Podman when already aborted", async () => {
   await withFakePodman(async (root) => {
     const marker = join(root, "podman-invoked");
-    await writeFile(join(root, "bin", "podman"), `#!/bin/sh
+    await writeFile(
+      join(root, "bin", "podman"),
+      `#!/bin/sh
 touch ${marker}
 exit 1
-`, { mode: 0o700 });
+`,
+      { mode: 0o700 },
+    );
     const workspace = join(root, "workspace");
     await mkdir(workspace);
     const controller = new AbortController();
     controller.abort(new DOMException("caller cancelled", "AbortError"));
 
-    await expect(runAgent({
-      mode: "headless",
-      workspace,
-      authProfile: "none",
-      prompt: "should not stage",
-      signal: controller.signal,
-    })).rejects.toThrow("caller cancelled");
+    await expect(
+      runAgent({
+        mode: "headless",
+        workspace,
+        authProfile: "none",
+        prompt: "should not stage",
+        signal: controller.signal,
+      }),
+    ).rejects.toThrow("caller cancelled");
     expect(await Bun.file(marker).exists()).toBe(false);
     expect(await lstat(join(root, "state", "pi-pod")).catch(() => undefined)).toBeUndefined();
   });
@@ -64,12 +73,14 @@ test("does not create an auth profile when login is already aborted", async () =
     const controller = new AbortController();
     controller.abort(new DOMException("caller cancelled", "AbortError"));
 
-    await expect(login({
-      agent: "pi",
-      provider: "openai-codex",
-      profile: "cancelled",
-      signal: controller.signal,
-    })).rejects.toThrow("caller cancelled");
+    await expect(
+      login({
+        agent: "pi",
+        provider: "openai-codex",
+        profile: "cancelled",
+        signal: controller.signal,
+      }),
+    ).rejects.toThrow("caller cancelled");
     expect(await lstat(join(root, "state", "pi-pod")).catch(() => undefined)).toBeUndefined();
   });
 });
@@ -81,7 +92,12 @@ test("stages the host Pi credential for interactive dev without changing its sou
     const hostAuth = join(home, ".pi", "agent", "auth.json");
     const workspace = join(root, "workspace");
     const source = `${JSON.stringify({
-      "openai-codex": { type: "oauth", access: "host-access", refresh: "host-refresh", expires: 1_900_000_000_000 },
+      "openai-codex": {
+        type: "oauth",
+        access: "host-access",
+        refresh: "host-refresh",
+        expires: 1_900_000_000_000,
+      },
       unrelated: { token: "never-stage-this" },
     })}\n`;
     try {
@@ -121,13 +137,17 @@ test("stages the host OpenCode OpenAI session for interactive dev without mounti
       await mkdir(workspace);
       await writeFile(hostAuth, source);
       await writeFile(hostSettings, "must-not-mount");
-      await writeFile(join(root, "bin", "podman"), `#!/bin/sh
+      await writeFile(
+        join(root, "bin", "podman"),
+        `#!/bin/sh
 case "$1" in
   info) printf '%s\\n' '{"host":{"os":"linux","cgroupVersion":"v2","cgroupControllers":["cpu","memory","pids"],"serviceIsRemote":false,"security":{"rootless":true}}}' ;;
   run) printf '%s\\n' "$@" > ${JSON.stringify(trace)} ;;
   container) exit 1 ;;
 esac
-`, { mode: 0o700 });
+`,
+        { mode: 0o700 },
+      );
 
       const result = await runAgent({
         agent: "opencode",
@@ -163,17 +183,29 @@ test("does not mount host extensions when dev explicitly passes Pi --no-extensio
       Bun.env.HOME = home;
       await mkdir(hostExtensions, { recursive: true });
       await mkdir(workspace);
-      await writeFile(hostAuth, JSON.stringify({
-        "openai-codex": { type: "oauth", access: "host-access", refresh: "host-refresh", expires: 1_900_000_000_000 },
-      }));
+      await writeFile(
+        hostAuth,
+        JSON.stringify({
+          "openai-codex": {
+            type: "oauth",
+            access: "host-access",
+            refresh: "host-refresh",
+            expires: 1_900_000_000_000,
+          },
+        }),
+      );
       await writeFile(join(hostExtensions, "fixture.ts"), "export default () => {};\n");
-      await writeFile(join(root, "bin", "podman"), `#!/bin/sh
+      await writeFile(
+        join(root, "bin", "podman"),
+        `#!/bin/sh
 case "$1" in
   info) printf '%s\\n' '{"host":{"os":"linux","cgroupVersion":"v2","cgroupControllers":["cpu","memory","pids"],"serviceIsRemote":false,"security":{"rootless":true}}}' ;;
   run) printf '%s\\n' "$@" > ${JSON.stringify(trace)} ;;
   container) exit 1 ;;
 esac
-`, { mode: 0o700 });
+`,
+        { mode: 0o700 },
+      );
 
       await runAgent({
         mode: "interactive",
@@ -198,19 +230,25 @@ test("rejects host credentials for a headless autonomous OpenCode run", async ()
     const workspace = join(root, "workspace");
     const marker = join(root, "podman-invoked");
     await mkdir(workspace);
-    await writeFile(join(root, "bin", "podman"), `#!/bin/sh
+    await writeFile(
+      join(root, "bin", "podman"),
+      `#!/bin/sh
 touch ${marker}
 exit 1
-`, { mode: 0o700 });
+`,
+      { mode: 0o700 },
+    );
 
-    await expect(runAgent({
-      agent: "opencode",
-      mode: "headless",
-      workspace,
-      workspaceMode: "bind",
-      authProfile: "host",
-      prompt: "must not use host state",
-    })).rejects.toThrow("only to interactive dev sessions");
+    await expect(
+      runAgent({
+        agent: "opencode",
+        mode: "headless",
+        workspace,
+        workspaceMode: "bind",
+        authProfile: "host",
+        prompt: "must not use host state",
+      }),
+    ).rejects.toThrow("only to interactive dev sessions");
     expect(await lstat(join(root, "state", "pi-pod")).catch(() => undefined)).toBeUndefined();
     expect(await Bun.file(marker).exists()).toBe(false);
   });
@@ -232,13 +270,17 @@ test("default headless OpenCode runs neither read nor mount host OpenCode state"
       await writeFile(hostAuth, "host-auth-must-not-be-read");
       await writeFile(hostSettings, "host-settings-must-not-be-mounted");
       await createAuthProfile({ agent: "opencode", name: "default", provider: "openai" });
-      await writeFile(join(root, "bin", "podman"), `#!/bin/sh
+      await writeFile(
+        join(root, "bin", "podman"),
+        `#!/bin/sh
 case "$1" in
   info) printf '%s\\n' '{"host":{"os":"linux","cgroupVersion":"v2","cgroupControllers":["cpu","memory","pids"],"serviceIsRemote":false,"security":{"rootless":true}}}' ;;
   run) printf '%s\\n' "$@" > ${JSON.stringify(trace)} ;;
   container) exit 1 ;;
 esac
-`, { mode: 0o700 });
+`,
+        { mode: 0o700 },
+      );
 
       const result = await runAgent({
         agent: "opencode",
@@ -275,13 +317,17 @@ test("headless runs never mount dev-only host Pi resources", async () => {
       await mkdir(workspace);
       await writeFile(join(extensions, "host-only.ts"), "export default {};\n");
       await writeFile(settings, JSON.stringify({ extensions: ["./extensions/host-only.ts"] }));
-      await writeFile(join(root, "bin", "podman"), `#!/bin/sh
+      await writeFile(
+        join(root, "bin", "podman"),
+        `#!/bin/sh
 case "$1" in
   info) printf '%s\\n' '{"host":{"os":"linux","cgroupVersion":"v2","cgroupControllers":["cpu","memory","pids"],"serviceIsRemote":false,"security":{"rootless":true}}}' ;;
   run) printf '%s\\n' "$@" > ${JSON.stringify(trace)} ;;
   container) exit 1 ;;
 esac
-`, { mode: 0o700 });
+`,
+        { mode: 0o700 },
+      );
 
       await runAgent({
         mode: "headless",
@@ -314,13 +360,17 @@ test("forwards an explicit API key only through the Podman client environment", 
       Bun.env.OPENAI_API_KEY = "fake-explicit-api-key";
       Bun.env.STRIPE_SECRET_KEY = "fake-unrelated-secret";
       await mkdir(workspace);
-      await writeFile(join(root, "bin", "podman"), `#!/bin/sh
+      await writeFile(
+        join(root, "bin", "podman"),
+        `#!/bin/sh
 case "$1" in
   info) printf '%s\\n' '{"host":{"os":"linux","cgroupVersion":"v2","cgroupControllers":["cpu","memory","pids"],"serviceIsRemote":false,"security":{"rootless":true}}}' ;;
   run) printf '%s\\n' "$@" > ${JSON.stringify(argsTrace)}; env > ${JSON.stringify(environmentTrace)} ;;
   container) exit 1 ;;
 esac
-`, { mode: 0o700 });
+`,
+        { mode: 0o700 },
+      );
 
       await runAgent({
         mode: "headless",
@@ -329,7 +379,9 @@ esac
         authProfile: "none",
         environment: ["OPENAI_API_KEY"],
         prompt: "fixture task",
-        onDiagnostic: (message) => { diagnostics.push(message); },
+        onDiagnostic: (message) => {
+          diagnostics.push(message);
+        },
         output: { stdout: new WritableStream({ write: () => {} }) },
       });
 
@@ -356,8 +408,14 @@ test("reconciles a profile only after a leftover exact named container is remove
     const containerName = join(root, "container-name");
     const stageAuth = join(root, "stage-auth");
     await mkdir(workspace);
-    const profile = await createAuthProfile({ agent: "pi", name: "leftover", provider: "openai-codex" });
-    await writeFile(join(root, "bin", "podman"), `#!/bin/sh
+    const profile = await createAuthProfile({
+      agent: "pi",
+      name: "leftover",
+      provider: "openai-codex",
+    });
+    await writeFile(
+      join(root, "bin", "podman"),
+      `#!/bin/sh
 case "$1" in
   info) printf '%s\\n' '{"host":{"os":"linux","cgroupVersion":"v2","cgroupControllers":["cpu","memory","pids"],"serviceIsRemote":false,"security":{"rootless":true}}}' ;;
   run)
@@ -380,7 +438,9 @@ case "$1" in
     ;;
   stop|kill|rm) rm -f ${JSON.stringify(container)} ;;
 esac
-`, { mode: 0o700 });
+`,
+      { mode: 0o700 },
+    );
 
     const result = await runAgent({
       mode: "headless",
@@ -394,7 +454,12 @@ esac
     expect(result.cleanup.containerRemoved).toBe(true);
     expect(await Bun.file(container).exists()).toBe(false);
     expect(await Bun.file(profile.authFile).json()).toEqual({
-      "openai-codex": { type: "oauth", access: "new-access", refresh: "new-refresh", expires: 1234 },
+      "openai-codex": {
+        type: "oauth",
+        access: "new-access",
+        refresh: "new-refresh",
+        expires: 1234,
+      },
     });
   });
 });
@@ -406,8 +471,14 @@ test("preserves a profile stage through cancellation until its exact container i
     const containerName = join(root, "container-name");
     const stageAuth = join(root, "stage-auth");
     await mkdir(workspace);
-    const profile = await createAuthProfile({ agent: "pi", name: "cancelled", provider: "openai-codex" });
-    await writeFile(join(root, "bin", "podman"), `#!/bin/sh
+    const profile = await createAuthProfile({
+      agent: "pi",
+      name: "cancelled",
+      provider: "openai-codex",
+    });
+    await writeFile(
+      join(root, "bin", "podman"),
+      `#!/bin/sh
 case "$1" in
   info) printf '%s\\n' '{"host":{"os":"linux","cgroupVersion":"v2","cgroupControllers":["cpu","memory","pids"],"serviceIsRemote":false,"security":{"rootless":true}}}' ;;
   run)
@@ -433,7 +504,9 @@ case "$1" in
     ;;
   stop|kill|rm) rm -f ${JSON.stringify(container)} ;;
 esac
-`, { mode: 0o700 });
+`,
+      { mode: 0o700 },
+    );
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(new Error("cancel fixture")), 100);
@@ -452,7 +525,12 @@ esac
     expect(result.cleanup.containerRemoved).toBe(true);
     expect(await Bun.file(container).exists()).toBe(false);
     expect(await Bun.file(profile.authFile).json()).toEqual({
-      "openai-codex": { type: "oauth", access: "cancel-access", refresh: "cancel-refresh", expires: 1234 },
+      "openai-codex": {
+        type: "oauth",
+        access: "cancel-access",
+        refresh: "cancel-refresh",
+        expires: 1234,
+      },
     });
   });
 });
@@ -464,8 +542,14 @@ test("reconciles a timed-out profile only after its exact container is removed",
     const containerName = join(root, "container-name");
     const stageAuth = join(root, "stage-auth");
     await mkdir(workspace);
-    const profile = await createAuthProfile({ agent: "pi", name: "timed-out", provider: "openai-codex" });
-    await writeFile(join(root, "bin", "podman"), `#!/bin/sh
+    const profile = await createAuthProfile({
+      agent: "pi",
+      name: "timed-out",
+      provider: "openai-codex",
+    });
+    await writeFile(
+      join(root, "bin", "podman"),
+      `#!/bin/sh
 case "$1" in
   info) printf '%s\\n' '{"host":{"os":"linux","cgroupVersion":"v2","cgroupControllers":["cpu","memory","pids"],"serviceIsRemote":false,"security":{"rootless":true}}}' ;;
   run)
@@ -490,7 +574,9 @@ case "$1" in
     ;;
   stop|kill|rm) rm -f ${JSON.stringify(container)} ;;
 esac
-`, { mode: 0o700 });
+`,
+      { mode: 0o700 },
+    );
 
     const result = await runAgent({
       mode: "headless",
@@ -506,7 +592,12 @@ esac
     expect(result.cleanup.containerRemoved).toBe(true);
     expect(await Bun.file(container).exists()).toBe(false);
     expect(await Bun.file(profile.authFile).json()).toEqual({
-      "openai-codex": { type: "oauth", access: "timeout-access", refresh: "timeout-refresh", expires: 1234 },
+      "openai-codex": {
+        type: "oauth",
+        access: "timeout-access",
+        refresh: "timeout-refresh",
+        expires: 1234,
+      },
     });
   });
 });
@@ -524,7 +615,11 @@ test("reports an explicit no-auth outcome and streams output without buffering",
       authProfile: "none",
       prompt: "fixture task",
       output: {
-        stdout: new WritableStream({ write: (chunk) => { chunks.push(new Uint8Array(chunk)); } }),
+        stdout: new WritableStream({
+          write: (chunk) => {
+            chunks.push(new Uint8Array(chunk));
+          },
+        }),
       },
     });
 
@@ -590,15 +685,23 @@ test("reports retained auth staging instead of hiding failed reconciliation", as
   await withFakePodman(async (root) => {
     const workspace = join(root, "workspace");
     await mkdir(workspace);
-    const profile = await createAuthProfile({ agent: "pi", name: "fixture", provider: "openai-codex" });
+    const profile = await createAuthProfile({
+      agent: "pi",
+      name: "fixture",
+      provider: "openai-codex",
+    });
     const stagePath = join(root, "staged-agent-directory");
-    await writeFile(join(root, "bin", "podman"), `#!/bin/sh
+    await writeFile(
+      join(root, "bin", "podman"),
+      `#!/bin/sh
 case "$1" in
   info) printf '%s\\n' '{"host":{"os":"linux","cgroupVersion":"v2","cgroupControllers":["cpu","memory","pids"],"serviceIsRemote":false,"security":{"rootless":true}}}' ;;
   run) for arg in "$@"; do case "$arg" in *dst=/home/agent/.pi/agent*) stage=\${arg#type=bind,src=}; stage=\${stage%,dst=*}; printf '%s' "$stage" > ${JSON.stringify(stagePath)} ;; esac; done ;;
   container) exit 1 ;;
 esac
-`, { mode: 0o700 });
+`,
+      { mode: 0o700 },
+    );
 
     const result = await runAgent({
       agent: "pi",

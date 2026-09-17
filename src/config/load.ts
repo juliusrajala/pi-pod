@@ -1,7 +1,7 @@
 import { homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import { agentNames, type AgentName } from "../agents/registry.ts";
-import type { RunMode } from "../types.ts";
+import type { RunMode } from "../execution/types.ts";
 import { readBoundedText } from "../utils/fs.ts";
 import {
   assertModelPreference,
@@ -31,11 +31,13 @@ export async function loadCliPreferences(input: {
   if (input.configPath !== undefined && input.noConfig) {
     throw new Error("--config and --no-config cannot be used together.");
   }
-  if (input.noConfig || (input.mode === "headless" && input.configPath === undefined)) return undefined;
+  if (input.noConfig || (input.mode === "headless" && input.configPath === undefined))
+    return undefined;
 
-  const path = input.configPath === undefined
-    ? conventionalConfigPath()
-    : explicitConfigPath(input.configPath);
+  const path =
+    input.configPath === undefined
+      ? conventionalConfigPath()
+      : explicitConfigPath(input.configPath);
   const text = await readConfiguration(path, input.configPath === undefined);
   if (text === undefined) return undefined;
   const document = parseConfiguration(text);
@@ -83,7 +85,8 @@ export function parseConfiguration(text: string): ConfigurationDocument {
   const document: ConfigurationDocument = {};
   let hasResources = false;
   for (const [agent, agentValue] of Object.entries(value.agents)) {
-    if (!(agentNames as readonly string[]).includes(agent)) throw new Error(`Unsupported configuration agent: ${agent}.`);
+    if (!(agentNames as readonly string[]).includes(agent))
+      throw new Error(`Unsupported configuration agent: ${agent}.`);
     const parsed = parseAgentSections(agent as AgentName, agentValue);
     document[agent as AgentName] = parsed.sections;
     hasResources ||= parsed.hasResources;
@@ -94,14 +97,18 @@ export function parseConfiguration(text: string): ConfigurationDocument {
   return document;
 }
 
-function parseAgentSections(agent: AgentName, value: unknown): { sections: Partial<Record<RunMode, ModeSection>>; hasResources: boolean } {
+function parseAgentSections(
+  agent: AgentName,
+  value: unknown,
+): { sections: Partial<Record<RunMode, ModeSection>>; hasResources: boolean } {
   if (!isRecord(value) || !hasOnlyKeys(value, ["dev", "run"])) {
     throw new Error(`Configuration agents.${agent} supports only dev and run sections.`);
   }
   let hasResources = false;
   const sections: Partial<Record<RunMode, ModeSection>> = {};
   for (const [sectionName, sectionValue] of Object.entries(value)) {
-    if (sectionName !== "dev" && sectionName !== "run") throw new Error(`Configuration agents.${agent} supports only dev and run sections.`);
+    if (sectionName !== "dev" && sectionName !== "run")
+      throw new Error(`Configuration agents.${agent} supports only dev and run sections.`);
     const mode: RunMode = sectionName === "dev" ? "interactive" : "headless";
     const parsed = parseModeSection(agent, sectionName, sectionValue);
     sections[mode] = { preferences: parsed.preferences };
@@ -110,17 +117,28 @@ function parseAgentSections(agent: AgentName, value: unknown): { sections: Parti
   return { sections, hasResources };
 }
 
-function parseModeSection(agent: AgentName, mode: "dev" | "run", value: unknown): { preferences?: AgentPreferences; hasResources: boolean } {
+function parseModeSection(
+  agent: AgentName,
+  mode: "dev" | "run",
+  value: unknown,
+): { preferences?: AgentPreferences; hasResources: boolean } {
   const field = `agents.${agent}.${mode}`;
   if (!isRecord(value) || !hasOnlyKeys(value, ["model", "preferences", "resources"])) {
     throw new Error(`${field} supports only model, preferences, and resources.`);
   }
   const model = value.model === undefined ? undefined : parseModel(value.model, `${field}.model`);
-  const native = value.preferences === undefined ? {} : parseNativePreferences(agent, value.preferences, `${field}.preferences`);
-  const preferences = model === undefined && Object.keys(native).length === 0 ? undefined : { model, ...native };
+  const native =
+    value.preferences === undefined
+      ? {}
+      : parseNativePreferences(agent, value.preferences, `${field}.preferences`);
+  const preferences =
+    model === undefined && Object.keys(native).length === 0 ? undefined : { model, ...native };
   return {
     ...(preferences === undefined ? {} : { preferences }),
-    hasResources: value.resources === undefined ? false : validateResources(agent, value.resources, `${field}.resources`),
+    hasResources:
+      value.resources === undefined
+        ? false
+        : validateResources(agent, value.resources, `${field}.resources`),
   };
 }
 
@@ -133,13 +151,19 @@ function parseModel(value: unknown, field: string): ModelPreference {
   return { provider: value.provider, id: value.id };
 }
 
-function parseNativePreferences(agent: AgentName, value: unknown, field: string): Omit<AgentPreferences, "model"> {
+function parseNativePreferences(
+  agent: AgentName,
+  value: unknown,
+  field: string,
+): Omit<AgentPreferences, "model"> {
   if (!isRecord(value)) throw new Error(`${field} must be an object.`);
   if (agent === "pi") {
     if (!hasOnlyKeys(value, ["thinking"])) throw new Error(`${field} supports only thinking.`);
     if (value.thinking === undefined) return {};
     if (!isPiThinkingLevel(value.thinking)) {
-      throw new Error(`${field}.thinking must be one of off, minimal, low, medium, high, xhigh, or max.`);
+      throw new Error(
+        `${field}.thinking must be one of off, minimal, low, medium, high, xhigh, or max.`,
+      );
     }
     return { thinking: value.thinking };
   }
@@ -153,7 +177,8 @@ function parseNativePreferences(agent: AgentName, value: unknown, field: string)
 
 function validateResources(agent: AgentName, value: unknown, field: string): true {
   const allowed = agent === "pi" ? ["extensions", "skills"] : ["plugins", "skills"];
-  if (!isRecord(value) || !hasOnlyKeys(value, allowed)) throw new Error(`${field} contains unsupported resource categories.`);
+  if (!isRecord(value) || !hasOnlyKeys(value, allowed))
+    throw new Error(`${field} contains unsupported resource categories.`);
   for (const [name, entries] of Object.entries(value)) {
     if (!Array.isArray(entries) || entries.some((entry) => !isBoundedNonemptyString(entry))) {
       throw new Error(`${field}.${name} must be an array of nonempty resource identifiers.`);
@@ -168,7 +193,8 @@ function assertNoPrototypeKeys(value: unknown): void {
     return;
   }
   for (const [key, child] of Object.entries(value)) {
-    if (key === "__proto__" || key === "prototype" || key === "constructor") throw new Error("forbidden object key");
+    if (key === "__proto__" || key === "prototype" || key === "constructor")
+      throw new Error("forbidden object key");
     assertNoPrototypeKeys(child);
   }
 }

@@ -1,14 +1,10 @@
-import type { AgentName } from "./types.ts";
+import type { AgentName } from "../execution/types.ts";
 import {
   acquireAuthProfile,
   removeAuthProfileLock as removeProfileLock,
   type ProfileLock,
-} from "./auth/lock.ts";
-import {
-  createAuthProfile,
-  loadAuthProfile,
-  type AuthProfile,
-} from "./auth/profiles.ts";
+} from "./lock.ts";
+import { createAuthProfile, loadAuthProfile, type AuthProfile } from "./profiles.ts";
 import {
   discardPendingAuthStages as discardStages,
   recoverHostAuthStages,
@@ -17,7 +13,7 @@ import {
   stageHostAuth,
   type AuthStage,
   type HostAuthStage,
-} from "./auth/staging.ts";
+} from "./staging.ts";
 
 export type { AuthProfile, AuthStage, HostAuthStage, ProfileLock };
 export {

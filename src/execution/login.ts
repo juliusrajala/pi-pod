@@ -1,13 +1,13 @@
-import { agentDefinition, assertAgentMode } from "./agents/registry.ts";
-import { defaultImage, defaultResourceLimits } from "./defaults.ts";
+import { agentDefinition, assertAgentMode } from "../agents/registry.ts";
+import { defaultImage, defaultResourceLimits } from "../container/image.ts";
 import {
   acquireAuthProfile,
   createAuthProfile,
   recoverPendingAuthStages,
   stageAuthProfile,
-} from "./auth.ts";
-import { runPodmanContainer } from "./container/lifecycle.ts";
-import { assertPodmanAvailable, buildPodmanRunArgs, podmanEnvironment } from "./podman.ts";
+} from "../auth/recovery.ts";
+import { runPodmanContainer } from "../container/lifecycle.ts";
+import { assertPodmanAvailable, buildPodmanRunArgs, podmanEnvironment } from "../container/args.ts";
 import type { LoginOptions, LoginResult } from "./types.ts";
 
 /** Profile-login orchestration shares the same hardened lifecycle as a run. */
@@ -49,10 +49,13 @@ export async function login(input: LoginOptions): Promise<LoginResult> {
     });
     if (!execution.cleanup.removed) {
       retainProfileLock = true;
-      throw new Error(`Could not verify removal of login container ${containerName}: ${execution.cleanup.error ?? "unknown cleanup failure"}`);
+      throw new Error(
+        `Could not verify removal of login container ${containerName}: ${execution.cleanup.error ?? "unknown cleanup failure"}`,
+      );
     }
     if (execution.aborted) throw new DOMException("Login aborted.", "AbortError");
-    if (execution.exitCode !== 0) throw new Error(`${input.agent} login exited with status ${execution.exitCode}.`);
+    if (execution.exitCode !== 0)
+      throw new Error(`${input.agent} login exited with status ${execution.exitCode}.`);
     await stage.reconcile();
     await stage.cleanup();
     stage = undefined;

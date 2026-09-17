@@ -1,11 +1,9 @@
 import { lstat } from "node:fs/promises";
 import { join } from "node:path";
-import type { PreparedWorkspace, WorkspaceMode } from "./types.ts";
-import { canonicalPath, realDirectory, stateDirectory } from "./utils/fs.ts";
-import { isInside, validIdentifier } from "./utils.ts";
-import { prepareClone } from "./workspace/git.ts";
-
-export { discardUnlaunchedRun, releaseRunReservation, removeRun } from "./workspace/runs.ts";
+import type { PreparedWorkspace, WorkspaceMode } from "../execution/types.ts";
+import { canonicalPath, realDirectory, stateDirectory } from "../utils/fs.ts";
+import { isInside, validIdentifier } from "../state/identifiers.ts";
+import { prepareClone } from "./git.ts";
 
 /**
  * Policy entry point for workspace preparation. Bind paths remain caller-owned;
@@ -26,14 +24,21 @@ export async function prepareWorkspace(input: {
     return { mode: "bind", path: sourcePath, owned: false, sourcePath };
   }
   const runId = validIdentifier(input.runId ?? crypto.randomUUID(), "Run ID");
-  return prepareClone({ sourcePath, runId, signal: input.signal, containerName: input.containerName });
+  return prepareClone({
+    sourcePath,
+    runId,
+    signal: input.signal,
+    containerName: input.containerName,
+  });
 }
 
 async function assertWorkspaceDoesNotOverlapState(workspace: string): Promise<void> {
   // Do not create state while rejecting an overlapping workspace.
   const canonicalState = await canonicalPath(stateDirectory());
   if (isInside(workspace, canonicalState) || isInside(canonicalState, workspace)) {
-    throw new Error("Workspace overlaps pi-pod state. Choose an XDG_STATE_HOME outside the mounted workspace.");
+    throw new Error(
+      "Workspace overlaps pi-pod state. Choose an XDG_STATE_HOME outside the mounted workspace.",
+    );
   }
 }
 
@@ -45,7 +50,9 @@ async function assertBindableWorkspace(path: string): Promise<void> {
   });
   if (metadata === undefined) return;
   if (metadata.isSymbolicLink() || metadata.isFile()) {
-    throw new Error("Bind workspaces cannot use external Git metadata (linked worktrees are unsupported). Mount a regular checkout or use clone mode.");
+    throw new Error(
+      "Bind workspaces cannot use external Git metadata (linked worktrees are unsupported). Mount a regular checkout or use clone mode.",
+    );
   }
   if (!metadata.isDirectory()) throw new Error("Workspace .git must be a directory when present.");
 }

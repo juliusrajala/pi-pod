@@ -1,5 +1,5 @@
-import { defaultResourceLimits } from "./defaults.ts";
-import type { ResourceLimits, RunMode } from "./types.ts";
+import { defaultResourceLimits } from "../container/image.ts";
+import type { ResourceLimits, RunMode } from "../execution/types.ts";
 
 const memoryPattern = /^(\d+(?:\.\d+)?)([bkmgte]?)$/iu;
 const memoryMultipliers: Record<string, number> = {
@@ -13,10 +13,13 @@ const memoryMultipliers: Record<string, number> = {
 };
 
 /** Resolve resource limits once, before any filesystem or Podman operation. */
-export function resolvedResourceLimits(overrides: Partial<ResourceLimits> | undefined): ResourceLimits {
+export function resolvedResourceLimits(
+  overrides: Partial<ResourceLimits> | undefined,
+): ResourceLimits {
   const limits = { ...defaultResourceLimits, ...overrides };
   const memory = typeof limits.memory === "string" ? memoryPattern.exec(limits.memory) : null;
-  if (memory === null) throw new Error("Memory limit must be a positive representable Podman size such as 4g.");
+  if (memory === null)
+    throw new Error("Memory limit must be a positive representable Podman size such as 4g.");
   const memoryBytes = Number(memory[1]) * memoryMultipliers[memory[2]?.toLowerCase() ?? ""]!;
   if (!Number.isFinite(memoryBytes) || memoryBytes < 1 || memoryBytes > Number.MAX_SAFE_INTEGER) {
     throw new Error("Memory limit must be a positive representable Podman size such as 4g.");
@@ -37,7 +40,11 @@ export function resolvedResourceLimits(overrides: Partial<ResourceLimits> | unde
 }
 
 /** Interactive runs are unbounded by default; headless runs have a fixed ceiling. */
-export function resolvedTimeoutMs(mode: RunMode, value: number | undefined, headlessDefault: number): number | undefined {
+export function resolvedTimeoutMs(
+  mode: RunMode,
+  value: number | undefined,
+  headlessDefault: number,
+): number | undefined {
   const timeoutMs = value ?? (mode === "headless" ? headlessDefault : undefined);
   if (timeoutMs === undefined) return undefined;
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0) {

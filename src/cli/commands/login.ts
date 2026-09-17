@@ -1,6 +1,6 @@
 import { Crust } from "@crustjs/core";
-import { login } from "../../login.ts";
-import { agents, type AgentName } from "../../types.ts";
+import { login } from "../../execution/login.ts";
+import { agents, type AgentName } from "../../execution/types.ts";
 import { reexecInDelegatedScope } from "../delegation.ts";
 import { interruptSignal } from "../signals.ts";
 import { requireNoAgentArguments, requireNoExtraArguments } from "./validation.ts";
@@ -28,7 +28,9 @@ export const loginCommand = new Crust("login")
         signal: interrupt.signal,
         onDiagnostic: (message) => console.error(`pi-pod: ${message}`),
       });
-      console.error(`Saved ${result.agent}/${result.provider} credentials in profile "${result.profile}".`);
+      console.error(
+        `Saved ${result.agent}/${result.provider} credentials in profile "${result.profile}".`,
+      );
     } finally {
       interrupt.dispose();
     }

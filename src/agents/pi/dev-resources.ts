@@ -1,7 +1,12 @@
 import { lstat, realpath, rm, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import { ensurePrivateStateDirectory, privateStateDirectory, readBoundedText, writePrivateFile } from "../../utils/fs.ts";
+import {
+  ensurePrivateStateDirectory,
+  privateStateDirectory,
+  readBoundedText,
+  writePrivateFile,
+} from "../../utils/fs.ts";
 
 const maxSettingsBytes = 256 * 1024;
 const containerResourceRoot = "/run/pi-pod-dev-resources";
@@ -39,23 +44,37 @@ export async function stageHostPiExtensionPackages(): Promise<DevResourceStage |
   });
   if (settingsText === undefined) return undefined;
   const settings = parseDevSettings(settingsText, hostPiAgentDirectory());
-  if (settings.packages.length === 0 && Object.keys(settings.modelDefaults).length === 0) return undefined;
+  if (settings.packages.length === 0 && Object.keys(settings.modelDefaults).length === 0)
+    return undefined;
 
-  const directory = join(await privateStateDirectory(), "dev-resource-staging", crypto.randomUUID());
+  const directory = join(
+    await privateStateDirectory(),
+    "dev-resource-staging",
+    crypto.randomUUID(),
+  );
   await ensurePrivateStateDirectory(directory);
   const settingsFile = join(directory, "settings.json");
-  await writePrivateFile(settingsFile, `${JSON.stringify({
-    ...settings.modelDefaults,
-    ...(settings.packages.length === 0 ? {} : {
-      packages: settings.packages.map((entry) => ({
-        source: entry.destination,
-        extensions: entry.extensions,
-        skills: [],
-        prompts: [],
-        themes: [],
-      })),
-    }),
-  }, null, 2)}\n`);
+  await writePrivateFile(
+    settingsFile,
+    `${JSON.stringify(
+      {
+        ...settings.modelDefaults,
+        ...(settings.packages.length === 0
+          ? {}
+          : {
+              packages: settings.packages.map((entry) => ({
+                source: entry.destination,
+                extensions: entry.extensions,
+                skills: [],
+                prompts: [],
+                themes: [],
+              })),
+            }),
+      },
+      null,
+      2,
+    )}\n`,
+  );
   let cleaned = false;
   return {
     settingsFile,
@@ -74,7 +93,10 @@ type LocalExtensionPackage = {
   extensions: string[];
 };
 
-function parseDevSettings(text: string, baseDirectory: string): {
+function parseDevSettings(
+  text: string,
+  baseDirectory: string,
+): {
   packages: LocalExtensionPackage[];
   modelDefaults: Record<string, string>;
 } {
@@ -82,28 +104,36 @@ function parseDevSettings(text: string, baseDirectory: string): {
   try {
     value = JSON.parse(text);
   } catch (error) {
-    throw new Error(`Invalid host Pi settings.json: ${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(
+      `Invalid host Pi settings.json: ${error instanceof Error ? error.message : String(error)}`,
+    );
   }
   if (!isRecord(value)) throw new Error("Invalid host Pi settings.json: expected an object.");
   const modelDefaults = Object.fromEntries(
     ["defaultProvider", "defaultModel", "defaultThinkingLevel"].flatMap((key) =>
-      typeof value[key] === "string" ? [[key, value[key]]] : []),
+      typeof value[key] === "string" ? [[key, value[key]]] : [],
+    ),
   );
   if (value.packages === undefined) return { packages: [], modelDefaults };
-  if (!Array.isArray(value.packages)) throw new Error("Invalid host Pi settings.json packages: expected an array.");
+  if (!Array.isArray(value.packages))
+    throw new Error("Invalid host Pi settings.json packages: expected an array.");
   const packages = value.packages.map((entry, index) => {
-    const source = typeof entry === "string"
-      ? entry
-      : isRecord(entry) && typeof entry.source === "string"
-        ? entry.source
-        : undefined;
+    const source =
+      typeof entry === "string"
+        ? entry
+        : isRecord(entry) && typeof entry.source === "string"
+          ? entry.source
+          : undefined;
     if (source === undefined) throw new Error(`Invalid host Pi package at index ${index}.`);
     if (source.startsWith("npm:") || source.startsWith("git:") || /^[a-z]+:\/\//i.test(source)) {
-      throw new Error(`Host Pi package ${source} is not a local path and cannot be staged for dev.`);
+      throw new Error(
+        `Host Pi package ${source} is not a local path and cannot be staged for dev.`,
+      );
     }
-    const extensions = isRecord(entry) && entry.extensions !== undefined
-      ? stringArray(entry.extensions, `extensions for host Pi package ${source}`)
-      : ["**/*"];
+    const extensions =
+      isRecord(entry) && entry.extensions !== undefined
+        ? stringArray(entry.extensions, `extensions for host Pi package ${source}`)
+        : ["**/*"];
     return {
       source: resolve(baseDirectory, source),
       destination: `${containerResourceRoot}/package-${index}`,

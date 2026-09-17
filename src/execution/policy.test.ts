@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { resolveRunPolicy } from "./options.ts";
+import { resolveRunPolicy } from "./policy.ts";
 
 test("resolves library and CLI-shared defaults without filesystem access", () => {
   const dev = resolveRunPolicy({ mode: "interactive", workspace: "/workspace" });
@@ -24,6 +24,7 @@ test("translates trusted library preferences without filesystem configuration lo
 });
 
 test("rejects headless host credentials during pure policy resolution", () => {
-  expect(() => resolveRunPolicy({ mode: "headless", workspace: "/workspace", authProfile: "host" }))
-    .toThrow("Host credentials are available only to interactive dev sessions");
+  expect(() =>
+    resolveRunPolicy({ mode: "headless", workspace: "/workspace", authProfile: "host" }),
+  ).toThrow("Host credentials are available only to interactive dev sessions");
 });

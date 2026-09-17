@@ -1,6 +1,6 @@
 # Readability refactor and autonomous validation
 
-**Status: historical implementation record.** Its completed structural and autonomous-validation checkpoints are reflected in the maintained [architecture](../docs/architecture.md), [authentication](../docs/authentication.md), [development](../docs/development.md), and [security](../docs/security.md) documentation. User-assisted OAuth validation remains manual; this plan preserves the original evidence and deferred work.
+**Status: historical implementation record.** Its completed structural and autonomous-validation checkpoints are reflected in the maintained [architecture](../../docs/architecture.md), [authentication](../../docs/authentication.md), [development](../../docs/development.md), and [security](../../docs/security.md) documentation. User-assisted OAuth validation remains manual; this plan preserves the original evidence and deferred work.
 
 ## Goal
 
@@ -77,11 +77,11 @@ Extract only cohesive helpers, for example credential-source/session setup and f
 
 Document and test the only accepted sources for `run`:
 
-| Source | Allowed in `run` | Purpose |
-| --- | --- | --- |
-| `--auth <pi-pod-profile>` | Yes | Wrapper-owned selected-provider profile |
-| `--auth none --env NAME` | Yes | Explicit task/API credential chosen by trusted caller |
-| Host Pi `auth.json` / host extensions/settings | No | Interactive-dev-only resources |
+| Source                                         | Allowed in `run` | Purpose                                               |
+| ---------------------------------------------- | ---------------- | ----------------------------------------------------- |
+| `--auth <pi-pod-profile>`                      | Yes              | Wrapper-owned selected-provider profile               |
+| `--auth none --env NAME`                       | Yes              | Explicit task/API credential chosen by trusted caller |
+| Host Pi `auth.json` / host extensions/settings | No               | Interactive-dev-only resources                        |
 
 Before adding any new source, define who creates it, where it lives, what exact files are staged, how refresh/recovery works, and how it is removed. No automatic discovery of orchestrator or personal configuration.
 

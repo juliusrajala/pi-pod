@@ -1,5 +1,5 @@
 import { Crust } from "@crustjs/core";
-import { removeAgentRun } from "../../run.ts";
+import { removeAgentRun } from "../../workspace/remove.ts";
 import { requireNoAgentArguments, requireNoExtraArguments } from "./validation.ts";
 
 export const removeCommand = new Crust("remove")

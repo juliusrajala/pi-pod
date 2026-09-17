@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { chmod, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { assertPodmanAvailable, podmanNeedsDelegatedScope } from "./podman.ts";
+import { assertPodmanAvailable, podmanNeedsDelegatedScope } from "./args.ts";
 
 async function withPodmanInfo(info: unknown, action: () => Promise<void>): Promise<void> {
   const root = await Bun.$`mktemp -d ${join(tmpdir(), "pi-pod-preflight-XXXXXX")}`.text();
@@ -23,18 +23,41 @@ async function withPodmanInfo(info: unknown, action: () => Promise<void>): Promi
 }
 
 test("requires cgroup v2 and rejects remote Podman", async () => {
-  const rootlessV1 = { host: { os: "linux", cgroupVersion: "v1", serviceIsRemote: false, security: { rootless: true } } };
+  const rootlessV1 = {
+    host: {
+      os: "linux",
+      cgroupVersion: "v1",
+      serviceIsRemote: false,
+      security: { rootless: true },
+    },
+  };
   await withPodmanInfo(rootlessV1, async () => {
     await expect(assertPodmanAvailable()).rejects.toThrow("cgroup v2");
   });
 
-  const noMemoryController = { host: { os: "linux", cgroupVersion: "v2", cgroupControllers: ["cpu", "pids"], serviceIsRemote: false, security: { rootless: true } } };
+  const noMemoryController = {
+    host: {
+      os: "linux",
+      cgroupVersion: "v2",
+      cgroupControllers: ["cpu", "pids"],
+      serviceIsRemote: false,
+      security: { rootless: true },
+    },
+  };
   await withPodmanInfo(noMemoryController, async () => {
     await expect(assertPodmanAvailable()).rejects.toThrow("cgroup controller");
     expect(await podmanNeedsDelegatedScope()).toBe(true);
   });
 
-  const remote = { host: { os: "linux", cgroupVersion: "v2", cgroupControllers: ["cpu", "memory", "pids"], serviceIsRemote: true, security: { rootless: true } } };
+  const remote = {
+    host: {
+      os: "linux",
+      cgroupVersion: "v2",
+      cgroupControllers: ["cpu", "memory", "pids"],
+      serviceIsRemote: true,
+      security: { rootless: true },
+    },
+  };
   await withPodmanInfo(remote, async () => {
     await expect(assertPodmanAvailable()).rejects.toThrow("remote Podman");
   });

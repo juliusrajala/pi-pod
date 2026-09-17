@@ -9,4 +9,4 @@
 - [Security boundary](security.md)
 - [Library API](library.md)
 
-The root [README](../README.md) is the concise entry point.
+The root [README](../README.md) is the concise entry point. Active implementation work and archived decisions are indexed in [plans](../plans/README.md).

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { resolvedResourceLimits, resolvedTimeoutMs } from "./options.ts";
+import { resolvedResourceLimits, resolvedTimeoutMs } from "./limits.ts";
 
 test("rejects resource values that would disable or weaken a limit", () => {
   for (const limits of [

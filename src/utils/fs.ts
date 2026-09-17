@@ -1,8 +1,19 @@
-import { chmod, lstat, mkdir, open, readlink, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  lstat,
+  mkdir,
+  open,
+  readlink,
+  realpath,
+  rename,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { constants } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join, relative, resolve } from "node:path";
-import { isInside, validIdentifier } from "../utils.ts";
+import { isInside, validIdentifier } from "../state/identifiers.ts";
 
 const MAX_JSON_BYTES = 1024 * 1024;
 
@@ -53,10 +64,12 @@ export async function privateStateDirectory(): Promise<string> {
 export async function ensurePrivateStateDirectory(path: string): Promise<string> {
   const root = await privateStateDirectory();
   const canonical = await canonicalPath(path);
-  if (!isInside(root, canonical)) throw new Error(`State path escaped the wrapper-owned root: ${path}`);
+  if (!isInside(root, canonical))
+    throw new Error(`State path escaped the wrapper-owned root: ${path}`);
   await ensurePrivateDirectory(canonical);
   const verified = await realDirectory(canonical, "State directory");
-  if (!isInside(root, verified)) throw new Error(`State path escaped the wrapper-owned root: ${path}`);
+  if (!isInside(root, verified))
+    throw new Error(`State path escaped the wrapper-owned root: ${path}`);
   const relativePath = relative(root, verified);
   let current = root;
   await ensurePrivateDirectory(current);
@@ -117,7 +130,8 @@ export async function writeNewPrivateFile(path: string, value: string): Promise<
 
 /** Read a bounded regular file through a no-follow descriptor. */
 export async function readBoundedText(path: string, maxBytes = MAX_JSON_BYTES): Promise<string> {
-  if (!Number.isSafeInteger(maxBytes) || maxBytes < 0) throw new Error("Maximum file size must be a non-negative safe integer.");
+  if (!Number.isSafeInteger(maxBytes) || maxBytes < 0)
+    throw new Error("Maximum file size must be a non-negative safe integer.");
   const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
     const metadata = await handle.stat();

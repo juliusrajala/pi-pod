@@ -1,6 +1,10 @@
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
-import { ensurePrivateStateDirectory, privateStateDirectory, writePrivateFile } from "./utils/fs.ts";
+import {
+  ensurePrivateStateDirectory,
+  privateStateDirectory,
+  writePrivateFile,
+} from "../utils/fs.ts";
 
 export const maxPromptBytes = 256 * 1024;
 

@@ -2,8 +2,9 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 import { chmod, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { commandOutput } from "./utils/process.ts";
-import { prepareWorkspace, releaseRunReservation, removeRun } from "./workspace.ts";
+import { commandOutput } from "../utils/process.ts";
+import { prepareWorkspace } from "./prepare.ts";
+import { releaseRunReservation, removeRun } from "./runs.ts";
 
 let root = "";
 let previousStateHome: string | undefined;
@@ -27,7 +28,9 @@ test("rejects a workspace that would mount wrapper state", async () => {
   const original = Bun.env.XDG_STATE_HOME;
   Bun.env.XDG_STATE_HOME = configuredStateHome;
   try {
-    await expect(prepareWorkspace({ path: source, mode: "bind" })).rejects.toThrow("Workspace overlaps pi-pod state");
+    await expect(prepareWorkspace({ path: source, mode: "bind" })).rejects.toThrow(
+      "Workspace overlaps pi-pod state",
+    );
   } finally {
     Bun.env.XDG_STATE_HOME = original;
   }
@@ -41,7 +44,9 @@ test("rejects a workspace that canonically contains state through a dangling XDG
   const original = Bun.env.XDG_STATE_HOME;
   Bun.env.XDG_STATE_HOME = xdgLink;
   try {
-    await expect(prepareWorkspace({ path: source, mode: "bind" })).rejects.toThrow("Workspace overlaps pi-pod state");
+    await expect(prepareWorkspace({ path: source, mode: "bind" })).rejects.toThrow(
+      "Workspace overlaps pi-pod state",
+    );
     expect(await Bun.file(join(stateParent, "pi-pod")).exists()).toBe(false);
   } finally {
     Bun.env.XDG_STATE_HOME = original;
@@ -79,15 +84,18 @@ test("does not remove a dead wrapper's clone while its recorded container exists
   await mkdir(fakeBin);
   await writeFile(join(fakeBin, "podman"), "#!/bin/sh\nexit 0\n");
   await chmod(join(fakeBin, "podman"), 0o755);
-  await writeFile(join(run, "run.json"), `${JSON.stringify({
-    version: 1,
-    id: "orphan",
-    reservation: {
-      containerName: "pi-pod-orphan",
-      pid: 999_999_999,
-      startedAt: new Date().toISOString(),
-    },
-  })}\n`);
+  await writeFile(
+    join(run, "run.json"),
+    `${JSON.stringify({
+      version: 1,
+      id: "orphan",
+      reservation: {
+        containerName: "pi-pod-orphan",
+        pid: 999_999_999,
+        startedAt: new Date().toISOString(),
+      },
+    })}\n`,
+  );
   await writeFile(sentinel, "do not remove\n");
   const originalPath = Bun.env.PATH;
   Bun.env.PATH = `${fakeBin}:${originalPath}`;
@@ -115,8 +123,12 @@ test("clone mode uses local HEAD without ignored files or a shared object store"
   expect(workspace.baseRevision).toBe(baseRevision);
   expect(await Bun.file(join(workspace.path, ".env")).exists()).toBe(false);
   expect((await git(["remote"], workspace.path)).trim()).toBe("");
-  expect(await Bun.file(join(workspace.path, ".git", "objects", "info", "alternates")).exists()).toBe(false);
-  expect((await git(["rev-parse", "--abbrev-ref", "HEAD"], workspace.path)).trim()).toBe("pi-pod/run-1");
+  expect(
+    await Bun.file(join(workspace.path, ".git", "objects", "info", "alternates")).exists(),
+  ).toBe(false);
+  expect((await git(["rev-parse", "--abbrev-ref", "HEAD"], workspace.path)).trim()).toBe(
+    "pi-pod/run-1",
+  );
   expect((await git(["status", "--porcelain"], source)).trim()).toBe("");
 
   await removeRun("run-1");
@@ -148,7 +160,9 @@ test("rejects a duplicate run ID without deleting retained work", async () => {
   const sentinel = join(first.path, "uncommitted-agent-work");
   await writeFile(sentinel, "keep this retained work\n");
 
-  await expect(prepareWorkspace({ path: source, mode: "clone", runId: "retained" })).rejects.toThrow("already exists");
+  await expect(
+    prepareWorkspace({ path: source, mode: "clone", runId: "retained" }),
+  ).rejects.toThrow("already exists");
   expect(await Bun.file(sentinel).text()).toBe("keep this retained work\n");
 });
 
@@ -158,22 +172,31 @@ test("rejects source filter attributes before Git can run their host command", a
   await writeFile(join(source, ".gitattributes"), "tracked.txt filter=host-marker\n");
   await git(["add", ".gitattributes"], source);
   await git(["commit", "-m", "add filter attribute"], source);
-  await git(["config", "filter.host-marker.clean", `sh -c 'printf executed > ${marker}; cat'`], source);
+  await git(
+    ["config", "filter.host-marker.clean", `sh -c 'printf executed > ${marker}; cat'`],
+    source,
+  );
   await Bun.sleep(1_100); // Avoid Git's racy-clean timestamp shortcut.
   await writeFile(join(source, "tracked.txt"), "dirty\n");
 
-  await expect(prepareWorkspace({ path: source, mode: "clone", runId: "filter" })).rejects.toThrow("reject Git filter attributes");
+  await expect(prepareWorkspace({ path: source, mode: "clone", runId: "filter" })).rejects.toThrow(
+    "reject Git filter attributes",
+  );
   expect(await Bun.file(marker).exists()).toBe(false);
 });
 
 test("clone mode rejects dirty source repositories and bind mode rejects linked worktrees", async () => {
   const source = await gitFixture();
   await writeFile(join(source, "tracked.txt"), "dirty\n");
-  await expect(prepareWorkspace({ path: source, mode: "clone", runId: "dirty" })).rejects.toThrow("clean Git repository");
+  await expect(prepareWorkspace({ path: source, mode: "clone", runId: "dirty" })).rejects.toThrow(
+    "clean Git repository",
+  );
 
   const linked = join(root, "linked");
   await git(["worktree", "add", "--detach", linked], source);
-  await expect(prepareWorkspace({ path: linked, mode: "bind" })).rejects.toThrow("external Git metadata");
+  await expect(prepareWorkspace({ path: linked, mode: "bind" })).rejects.toThrow(
+    "external Git metadata",
+  );
 });
 
 async function gitFixture(): Promise<string> {

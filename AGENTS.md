@@ -4,7 +4,7 @@
 
 `pi-pod` is a Bun TypeScript CLI/library that runs Pi or OpenCode in rootless Podman. It is a security boundary for local development and autonomous runs, not an orchestrator, daemon, or deployment platform.
 
-Read `README.md` before changing behavior. Maintained contributor and security guidance lives in `docs/development.md` and `docs/security.md`; the plans in `plans/` and adversarial constraints in `reviews/` preserve decisions that should not be silently weakened.
+Read `README.md` before changing behavior. Maintained contributor and security guidance lives in `docs/development.md` and `docs/security.md`; [the plans index](plans/README.md) and adversarial constraints in `reviews/` preserve decisions that should not be silently weakened.
 
 ## Commands
 
@@ -20,7 +20,7 @@ mise exec -- ./bin/pi-pod build
 Run opt-in integration tests only when Podman/the required user-systemd environment is available:
 
 ```sh
-PI_POD_INTEGRATION=1 mise exec -- bun test src/podman.integration.test.ts
+PI_POD_INTEGRATION=1 mise exec -- bun test src/container/podman.integration.test.ts
 PI_POD_SYSTEMD_INTEGRATION=1 mise exec -- bun test src/cli/delegation.integration.test.ts
 ```
 
@@ -30,10 +30,11 @@ Use Bun, not Node, npm, pnpm, or yarn. Invoke the CLI through `./bin/pi-pod`, no
 
 - `index.ts` — public library exports.
 - `src/cli/` — parsing, commands, signals, output, and delegation.
-- `src/run.ts`, `src/podman.ts` — agent execution and restrictive Podman arguments.
+- `src/execution/` — run/login orchestration, policy, prompt staging, and finalization.
+- `src/container/` — restrictive Podman arguments, preflight, and lifecycle.
 - `src/auth/` — profiles, host credential validation/staging, locking, and recovery.
-- `src/workspace/` — direct/clone workspace preparation and retained-run lifecycle.
-- `src/dev-resources.ts` — filtered, read-only interactive Pi extension/package resources.
+- `src/workspace/` — direct/clone preparation and retained-run lifecycle/removal.
+- `src/agents/pi/dev-resources.ts` — filtered, read-only interactive Pi extension/package resources.
 - `container/Containerfile` — pinned agent image.
 - `src/**/*.test.ts` — unit and adversarial regression tests.
 
@@ -50,7 +51,7 @@ Use Bun, not Node, npm, pnpm, or yarn. Invoke the CLI through `./bin/pi-pod`, no
 
 - Keep security-sensitive code small, explicit, and covered by focused tests.
 - Add or update tests for credential policy, mount/environment allowlists, lifecycle cleanup, and filesystem ownership checks whenever related behavior changes.
-- Run relevant tests, `mise exec -- bun run typecheck`, and `git diff --check` before reporting completion.
+- Run `bun run format:check`, relevant tests, `mise exec -- bun run typecheck`, and `git diff --check` before reporting completion. Formatting is explicit (`bun run format`); do not install hooks or change editor settings.
 - Update `README.md` when CLI behavior, image versions, defaults, credential policy, or security guarantees change.
 - Do not commit, amend, create branches, configure remotes, or push unless the user explicitly asks.
 

@@ -1,5 +1,5 @@
 import type { AgentPreferences } from "../config/types.ts";
-import type { RunMode } from "../types.ts";
+import type { RunMode } from "../execution/types.ts";
 
 /** Closed built-in IDs. There is no runtime agent/plugin discovery. */
 export const agentNames = ["pi", "opencode"] as const;
@@ -28,7 +28,10 @@ export type AgentDefinition = {
   /** Pi-only filtered interactive extension/resource support. */
   interactiveDevResources?: "pi";
   /** Translate only reviewed native model/behavior flags; no Podman policy. */
-  preferenceArguments: (preferences: AgentPreferences | undefined, agentArgs: readonly string[]) => string[];
+  preferenceArguments: (
+    preferences: AgentPreferences | undefined,
+    agentArgs: readonly string[],
+  ) => string[];
   command: (input: {
     mode: RunMode;
     /** Fixed container path to a wrapper-owned, read-only task file. */

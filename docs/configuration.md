@@ -22,14 +22,14 @@ pi-pod supports a bounded JSON preference file for model selection and one verif
 
 ## Loading
 
-| Invocation | Behavior |
-| --- | --- |
-| `dev` | Optionally loads `$XDG_CONFIG_HOME/pi-pod/config.json`, or `~/.config/pi-pod/config.json` when XDG is unset. |
-| `dev --no-config` | Skips only this pi-pod preference-file layer. |
-| `dev --config /absolute/path.json` | Uses only that file instead of the automatic file. |
-| `run` | Never discovers personal configuration. |
-| `run --config /absolute/path.json` | Explicitly loads only the selected agent's `run` section. |
-| Library API | Accepts typed `preferences`; it never loads files. |
+| Invocation                         | Behavior                                                                                                     |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `dev`                              | Optionally loads `$XDG_CONFIG_HOME/pi-pod/config.json`, or `~/.config/pi-pod/config.json` when XDG is unset. |
+| `dev --no-config`                  | Skips only this pi-pod preference-file layer.                                                                |
+| `dev --config /absolute/path.json` | Uses only that file instead of the automatic file.                                                           |
+| `run`                              | Never discovers personal configuration.                                                                      |
+| `run --config /absolute/path.json` | Explicitly loads only the selected agent's `run` section.                                                    |
+| Library API                        | Accepts typed `preferences`; it never loads files.                                                           |
 
 `--config` must be absolute. It and `--no-config` are mutually exclusive. Missing automatic configuration is allowed; a missing, unreadable, symlinked, oversized, or invalid selected file fails before delegation, auth, workspace, or Podman side effects. There is no cwd/ancestor search, `.env` discovery, shell interpolation, dynamic import, file creation, or host configuration modification.
 

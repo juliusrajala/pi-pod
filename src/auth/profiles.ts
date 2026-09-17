@@ -1,12 +1,14 @@
 import { lstat } from "node:fs/promises";
 import { join } from "node:path";
-import {
-  assertSupportedCredentialProvider,
-  validateCredentialDocument,
-} from "./credentials.ts";
+import { assertSupportedCredentialProvider, validateCredentialDocument } from "./credentials.ts";
 import { agentNames, type AgentName } from "../agents/registry.ts";
-import { ensurePrivateStateDirectory, privateStateDirectory, readBoundedText, writeNewPrivateFile } from "../utils/fs.ts";
-import { validIdentifier } from "../utils.ts";
+import {
+  ensurePrivateStateDirectory,
+  privateStateDirectory,
+  readBoundedText,
+  writeNewPrivateFile,
+} from "../utils/fs.ts";
+import { validIdentifier } from "../state/identifiers.ts";
 
 export const profileVersion = 1;
 const maxAuthBytes = 256 * 1024;
@@ -45,11 +47,16 @@ export async function createAuthProfile(input: {
       agent: input.agent,
       provider: input.provider,
     };
-    const created = await writeNewPrivateFile(metadataPath, `${JSON.stringify(expected, null, 2)}\n`);
+    const created = await writeNewPrivateFile(
+      metadataPath,
+      `${JSON.stringify(expected, null, 2)}\n`,
+    );
     metadata = created ? expected : await readProfileMetadata(metadataPath);
   }
   if (metadata.agent !== input.agent || metadata.provider !== input.provider) {
-    throw new Error(`Auth profile "${input.name}" already belongs to ${metadata.agent}/${metadata.provider}.`);
+    throw new Error(
+      `Auth profile "${input.name}" already belongs to ${metadata.agent}/${metadata.provider}.`,
+    );
   }
   await writeNewPrivateFile(profile.authFile, "{}\n");
   validateCredentialDocument(input.agent, input.provider, await readAuthDocument(profile.authFile));
@@ -60,7 +67,8 @@ export async function loadAuthProfile(agent: AgentName, name: string): Promise<A
   validIdentifier(name, "Auth profile");
   const directory = join(await authRoot(), agent, name);
   const metadata = await readProfileMetadata(join(directory, "profile.json"));
-  if (metadata.agent !== agent) throw new Error(`Auth profile "${name}" does not belong to ${agent}.`);
+  if (metadata.agent !== agent)
+    throw new Error(`Auth profile "${name}" does not belong to ${agent}.`);
   return createAuthProfile({ agent, name, provider: metadata.provider });
 }
 
@@ -93,7 +101,11 @@ export function isMissing(error: unknown): error is NodeJS.ErrnoException {
   return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
 }
 
-async function profilePaths(agent: AgentName, name: string, provider: string): Promise<AuthProfile> {
+async function profilePaths(
+  agent: AgentName,
+  name: string,
+  provider: string,
+): Promise<AuthProfile> {
   validIdentifier(name, "Auth profile");
   validProvider(provider);
   const directory = join(await authRoot(), agent, name);
@@ -106,7 +118,12 @@ async function authRoot(): Promise<string> {
 
 async function readProfileMetadata(path: string): Promise<StoredProfile> {
   const value = await readAuthMetadata(path, "auth profile metadata");
-  if (!isRecord(value) || value.version !== profileVersion || !isAgent(value.agent) || typeof value.provider !== "string") {
+  if (
+    !isRecord(value) ||
+    value.version !== profileVersion ||
+    !isAgent(value.agent) ||
+    typeof value.provider !== "string"
+  ) {
     throw new Error(`Invalid auth profile metadata: ${path}`);
   }
   validProvider(value.provider);

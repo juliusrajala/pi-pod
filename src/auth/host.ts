@@ -24,7 +24,11 @@ async function readHostCredential(
   label: string,
 ): Promise<string> {
   try {
-    return normalizedHostCredentialDocument(agent, provider, await readBoundedText(path, maxHostAuthBytes));
+    return normalizedHostCredentialDocument(
+      agent,
+      provider,
+      await readBoundedText(path, maxHostAuthBytes),
+    );
   } catch (error) {
     if (isMissing(error)) throw new Error(`Host ${label} credential does not exist: ${path}`);
     throw error;

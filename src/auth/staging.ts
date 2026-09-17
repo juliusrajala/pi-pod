@@ -1,10 +1,7 @@
 import { readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { managedContainerExists } from "../container/lifecycle.ts";
-import {
-  normalizedCredentialDocument,
-  validateCredentialDocument,
-} from "./credentials.ts";
+import { normalizedCredentialDocument, validateCredentialDocument } from "./credentials.ts";
 import { hostOpenCodeOpenAiCredential, hostPiCodexCredential } from "./host.ts";
 import {
   isAgent,
@@ -15,8 +12,12 @@ import {
   validProvider,
   type AuthProfile,
 } from "./profiles.ts";
-import { ensurePrivateStateDirectory, privateStateDirectory, writePrivateFile } from "../utils/fs.ts";
-import { validIdentifier } from "../utils.ts";
+import {
+  ensurePrivateStateDirectory,
+  privateStateDirectory,
+  writePrivateFile,
+} from "../utils/fs.ts";
+import { validIdentifier } from "../state/identifiers.ts";
 
 /** Includes native lock/temp siblings as well as the bounded auth.json payload. */
 export const maxAuthStageBytes = 1024 * 1024;
@@ -46,20 +47,31 @@ export type AuthStage = {
 export type HostAuthStage = Omit<AuthStage, "profile">;
 
 /** Create a mutable native-agent state directory while retaining wrapper metadata outside it. */
-export async function stageAuthProfile(profile: AuthProfile, options: { containerName?: string } = {}): Promise<AuthStage> {
+export async function stageAuthProfile(
+  profile: AuthProfile,
+  options: { containerName?: string } = {},
+): Promise<AuthStage> {
   const source = await readAuthDocument(profile.authFile);
   validateCredentialDocument(profile.agent, profile.provider, source);
   const directory = join(await privateStateDirectory(), "auth-staging", crypto.randomUUID());
   await ensurePrivateStateDirectory(directory);
-  await writePrivateFile(join(directory, "stage.json"), `${JSON.stringify({
-    version: profileVersion,
-    agent: profile.agent,
-    name: profile.name,
-    provider: profile.provider,
-    containerName: options.containerName === undefined
-      ? null
-      : validIdentifier(options.containerName, "Container name"),
-  } satisfies StageMetadata, null, 2)}\n`);
+  await writePrivateFile(
+    join(directory, "stage.json"),
+    `${JSON.stringify(
+      {
+        version: profileVersion,
+        agent: profile.agent,
+        name: profile.name,
+        provider: profile.provider,
+        containerName:
+          options.containerName === undefined
+            ? null
+            : validIdentifier(options.containerName, "Container name"),
+      } satisfies StageMetadata,
+      null,
+      2,
+    )}\n`,
+  );
   // Only this child directory is mounted into the agent. Stage metadata stays
   // outside it, so the agent may create native lock/settings files without
   // gaining control of recovery metadata or persisted profile paths.
@@ -79,7 +91,10 @@ export async function stageAuthProfile(profile: AuthProfile, options: { containe
       if (reconciled) return;
       const updated = await readAuthDocument(authFile);
       validateCredentialDocument(profile.agent, profile.provider, updated, true);
-      await writePrivateFile(profile.authFile, normalizedCredentialDocument(profile.agent, profile.provider, updated));
+      await writePrivateFile(
+        profile.authFile,
+        normalizedCredentialDocument(profile.agent, profile.provider, updated),
+      );
       reconciled = true;
     },
     cleanup: async () => {
@@ -90,12 +105,17 @@ export async function stageAuthProfile(profile: AuthProfile, options: { containe
   };
 }
 
-const hostAuthSources: Readonly<Record<HostAuthStageSource, {
-  agent: AuthProfile["agent"];
-  name: string;
-  provider: string;
-  credential: () => Promise<string>;
-}>> = {
+const hostAuthSources: Readonly<
+  Record<
+    HostAuthStageSource,
+    {
+      agent: AuthProfile["agent"];
+      name: string;
+      provider: string;
+      credential: () => Promise<string>;
+    }
+  >
+> = {
   "host-pi": {
     agent: "pi",
     name: "host-pi",
@@ -111,7 +131,10 @@ const hostAuthSources: Readonly<Record<HostAuthStageSource, {
 };
 
 /** Stage only the selected reviewed host credential for an interactive source-only session. */
-export async function stageHostAuth(source: HostAuthStageSource, options: { containerName?: string } = {}): Promise<HostAuthStage> {
+export async function stageHostAuth(
+  source: HostAuthStageSource,
+  options: { containerName?: string } = {},
+): Promise<HostAuthStage> {
   return stageHostAuthSource({ source, ...hostAuthSources[source], ...options });
 }
 
@@ -126,16 +149,24 @@ async function stageHostAuthSource(input: {
   const source = await input.credential();
   const directory = join(await privateStateDirectory(), "auth-staging", crypto.randomUUID());
   await ensurePrivateStateDirectory(directory);
-  await writePrivateFile(join(directory, "stage.json"), `${JSON.stringify({
-    version: profileVersion,
-    agent: input.agent,
-    name: input.name,
-    provider: input.provider,
-    containerName: input.containerName === undefined
-      ? null
-      : validIdentifier(input.containerName, "Container name"),
-    source: input.source,
-  } satisfies StageMetadata, null, 2)}\n`);
+  await writePrivateFile(
+    join(directory, "stage.json"),
+    `${JSON.stringify(
+      {
+        version: profileVersion,
+        agent: input.agent,
+        name: input.name,
+        provider: input.provider,
+        containerName:
+          input.containerName === undefined
+            ? null
+            : validIdentifier(input.containerName, "Container name"),
+        source: input.source,
+      } satisfies StageMetadata,
+      null,
+      2,
+    )}\n`,
+  );
   const agentStateDirectory = join(directory, "agent-state");
   await ensurePrivateStateDirectory(agentStateDirectory);
   await writePrivateFile(join(agentStateDirectory, "auth.json"), source);
@@ -168,7 +199,8 @@ export async function recoverHostAuthStages(source?: HostAuthStageSource): Promi
     if (
       (metadata?.source !== "host-pi" && metadata?.source !== "host-opencode") ||
       (source !== undefined && metadata.source !== source)
-    ) continue;
+    )
+      continue;
     await assertStageContainerStopped({ directory, metadata });
     await rm(directory, { recursive: true, force: true });
   }
@@ -180,7 +212,10 @@ export async function recoverPendingAuthStages(profile: AuthProfile): Promise<vo
     const authFile = join(stage.directory, "agent-state", "auth.json");
     const updated = await readAuthDocument(authFile);
     validateCredentialDocument(profile.agent, profile.provider, updated, true);
-    await writePrivateFile(profile.authFile, normalizedCredentialDocument(profile.agent, profile.provider, updated));
+    await writePrivateFile(
+      profile.authFile,
+      normalizedCredentialDocument(profile.agent, profile.provider, updated),
+    );
     await rm(stage.directory, { recursive: true, force: true });
   }
 }
@@ -193,7 +228,9 @@ export async function discardPendingAuthStages(profile: AuthProfile): Promise<vo
   }
 }
 
-async function matchingStageDirectories(profile: AuthProfile): Promise<Array<{ directory: string; metadata: StageMetadata }>> {
+async function matchingStageDirectories(
+  profile: AuthProfile,
+): Promise<Array<{ directory: string; metadata: StageMetadata }>> {
   const root = join(await privateStateDirectory(), "auth-staging");
   const entries = await readdir(root, { withFileTypes: true }).catch((error) => {
     if (isMissing(error)) return [];
@@ -231,21 +268,28 @@ async function readStageMetadata(path: string): Promise<StageMetadata> {
   }
   validIdentifier(value.name, "Auth profile");
   validProvider(value.provider);
-  if (typeof value.containerName === "string") validIdentifier(value.containerName, "Container name");
+  if (typeof value.containerName === "string")
+    validIdentifier(value.containerName, "Container name");
   return {
     version: profileVersion,
     agent: value.agent,
     name: value.name,
     provider: value.provider,
     containerName: value.containerName,
-    source: value.source === "host-pi" || value.source === "host-opencode" ? value.source : "profile",
+    source:
+      value.source === "host-pi" || value.source === "host-opencode" ? value.source : "profile",
   };
 }
 
-async function assertStageContainerStopped(stage: { directory: string; metadata: StageMetadata }): Promise<void> {
+async function assertStageContainerStopped(stage: {
+  directory: string;
+  metadata: StageMetadata;
+}): Promise<void> {
   const name = stage.metadata.containerName;
-  if (name !== null && await managedContainerExists(name)) {
-    throw new Error(`Credential stage ${stage.directory} is still mounted by container ${name}; stop it before recovery.`);
+  if (name !== null && (await managedContainerExists(name))) {
+    throw new Error(
+      `Credential stage ${stage.directory} is still mounted by container ${name}; stop it before recovery.`,
+    );
   }
 }
 

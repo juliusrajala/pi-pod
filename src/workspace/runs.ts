@@ -9,7 +9,7 @@ import {
   removeOwnedDirectory,
   writePrivateFile,
 } from "../utils/fs.ts";
-import { isInside, validIdentifier } from "../utils.ts";
+import { isInside, validIdentifier } from "../state/identifiers.ts";
 
 export type RunReservation = {
   containerName: string;
@@ -43,7 +43,10 @@ export async function createRunDirectory(path: string, runId: string): Promise<v
   try {
     await mkdir(path, { mode: 0o700 });
   } catch (error) {
-    if (isExists(error)) throw new Error(`Run ID "${runId}" already exists; inspect or remove that retained run explicitly.`);
+    if (isExists(error))
+      throw new Error(
+        `Run ID "${runId}" already exists; inspect or remove that retained run explicitly.`,
+      );
     throw error;
   }
 }
@@ -86,7 +89,9 @@ export async function discardUnlaunchedRun(runId: string, containerName: string)
     throw new Error(`Run "${runId}" is not reserved by container ${containerName}.`);
   }
   if (await managedContainerExists(containerName)) {
-    throw new Error(`Run "${runId}" has container ${containerName}; refusing unlaunched-run cleanup.`);
+    throw new Error(
+      `Run "${runId}" has container ${containerName}; refusing unlaunched-run cleanup.`,
+    );
   }
   await removeOwnedDirectory(root, runId, async (quarantine) => {
     const moved = await assertRetainedRunMetadata(quarantine, runId);
@@ -94,12 +99,17 @@ export async function discardUnlaunchedRun(runId: string, containerName: string)
       throw new Error(`Run "${runId}" reservation changed during unlaunched-run cleanup.`);
     }
     if (await managedContainerExists(containerName)) {
-      throw new Error(`Run "${runId}" has container ${containerName}; refusing unlaunched-run cleanup.`);
+      throw new Error(
+        `Run "${runId}" has container ${containerName}; refusing unlaunched-run cleanup.`,
+      );
     }
   });
 }
 
-async function assertRetainedRunMetadata(runDirectory: string, runId: string): Promise<RunMetadata> {
+async function assertRetainedRunMetadata(
+  runDirectory: string,
+  runId: string,
+): Promise<RunMetadata> {
   const directory = await lstat(runDirectory).catch((error) => {
     if (isMissing(error)) return undefined;
     throw error;
@@ -112,9 +122,16 @@ async function assertRetainedRunMetadata(runDirectory: string, runId: string): P
   try {
     value = JSON.parse(await readBoundedText(metadataPath));
   } catch (error) {
-    throw new Error(`Refusing to remove run "${runId}" without valid wrapper metadata: ${errorMessage(error)}`);
+    throw new Error(
+      `Refusing to remove run "${runId}" without valid wrapper metadata: ${errorMessage(error)}`,
+    );
   }
-  if (!isRecord(value) || value.version !== 1 || value.id !== runId || !validRunReservation(value.reservation)) {
+  if (
+    !isRecord(value) ||
+    value.version !== 1 ||
+    value.id !== runId ||
+    !validRunReservation(value.reservation)
+  ) {
     throw new Error(`Refusing to remove run "${runId}" without matching wrapper metadata.`);
   }
   return {
@@ -131,17 +148,28 @@ async function assertRunReservationInactive(metadata: RunMetadata, runId: string
   const reservation = metadata.reservation;
   if (reservation === undefined) return;
   if (processExists(reservation.pid)) {
-    throw new Error(`Run "${runId}" is still being prepared by process ${reservation.pid}; refusing to remove its workspace.`);
+    throw new Error(
+      `Run "${runId}" is still being prepared by process ${reservation.pid}; refusing to remove its workspace.`,
+    );
   }
   if (await managedContainerExists(reservation.containerName)) {
-    throw new Error(`Run "${runId}" is still mounted by container ${reservation.containerName}; stop it before removing its workspace.`);
+    throw new Error(
+      `Run "${runId}" is still mounted by container ${reservation.containerName}; stop it before removing its workspace.`,
+    );
   }
 }
 
 function validRunReservation(value: unknown): value is RunReservation | undefined {
   if (value === undefined) return true;
-  if (!isRecord(value) || typeof value.containerName !== "string" || typeof value.pid !== "number" ||
-    !Number.isInteger(value.pid) || value.pid <= 0 || typeof value.startedAt !== "string") return false;
+  if (
+    !isRecord(value) ||
+    typeof value.containerName !== "string" ||
+    typeof value.pid !== "number" ||
+    !Number.isInteger(value.pid) ||
+    value.pid <= 0 ||
+    typeof value.startedAt !== "string"
+  )
+    return false;
   try {
     validIdentifier(value.containerName, "Container name");
     return true;
@@ -155,7 +183,12 @@ function processExists(pid: number): boolean {
     process.kill(pid, 0);
     return true;
   } catch (error) {
-    return !(typeof error === "object" && error !== null && "code" in error && error.code === "ESRCH");
+    return !(
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      error.code === "ESRCH"
+    );
   }
 }
 

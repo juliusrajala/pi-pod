@@ -1,4 +1,4 @@
-import type { ResourceLimits } from "./types.ts";
+import type { ResourceLimits } from "../execution/types.ts";
 
 /** Shared, pinned image reference. Builds and launches never discover an image. */
 export const defaultImage = "localhost/pi-pod:0.1.0";

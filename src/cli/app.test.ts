@@ -3,8 +3,8 @@ import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { parseArgs, resolveCommand } from "@crustjs/core";
-import { app, normalizeConfigOptOut } from "./cli/app.ts";
-import { isWrapperHelpRequest } from "./cli/help.ts";
+import { app, normalizeConfigOptOut } from "./app.ts";
+import { isWrapperHelpRequest } from "./help.ts";
 
 function trustedBunPath(): string {
   return `${dirname(process.execPath)}:${process.env.PATH}`;
@@ -14,10 +14,13 @@ test("launcher does not load a caller workspace Bun preload", async () => {
   const root = await mkdtemp(join(tmpdir(), "pi-pod-cli-"));
   try {
     const marker = join(root, "host-preload-ran");
-    await writeFile(join(root, "bunfig.toml"), "preload = [\"./preload.ts\"]\n");
-    await writeFile(join(root, "preload.ts"), `await Bun.write(${JSON.stringify(marker)}, "ran");\n`);
+    await writeFile(join(root, "bunfig.toml"), 'preload = ["./preload.ts"]\n');
+    await writeFile(
+      join(root, "preload.ts"),
+      `await Bun.write(${JSON.stringify(marker)}, "ran");\n`,
+    );
 
-    const child = Bun.spawn([resolve(import.meta.dir, "..", "bin", "pi-pod"), "--help"], {
+    const child = Bun.spawn([resolve(import.meta.dir, "..", "..", "bin", "pi-pod"), "--help"], {
       cwd: root,
       stdout: "pipe",
       stderr: "pipe",
@@ -46,7 +49,7 @@ test("launcher rejects a Bun runtime below its pinned minimum", async () => {
     await writeFile(bun, "#!/bin/sh\necho 1.3.9\n");
     await chmod(bun, 0o755);
 
-    const child = Bun.spawn([resolve(import.meta.dir, "..", "bin", "pi-pod"), "--help"], {
+    const child = Bun.spawn([resolve(import.meta.dir, "..", "..", "bin", "pi-pod"), "--help"], {
       cwd: root,
       stdout: "pipe",
       stderr: "pipe",
@@ -77,13 +80,16 @@ test("Crust rejects invalid input before auth, workspace, or Podman actions", as
       ["build", "unexpected"],
       ["login", "--agent", "pi", "--provider", "openai-codex", "--", "unexpected"],
     ]) {
-      const child = Bun.spawn([resolve(import.meta.dir, "..", "bin", "pi-pod"), ...argv], {
+      const child = Bun.spawn([resolve(import.meta.dir, "..", "..", "bin", "pi-pod"), ...argv], {
         cwd: root,
         stdout: "pipe",
         stderr: "pipe",
         env: { ...process.env, PATH: `${bin}:${trustedBunPath()}`, XDG_STATE_HOME: state },
       });
-      const [stderr, exitCode] = await Promise.all([new Response(child.stderr).text(), child.exited]);
+      const [stderr, exitCode] = await Promise.all([
+        new Response(child.stderr).text(),
+        child.exited,
+      ]);
 
       expect(exitCode).toBe(1);
       expect(stderr).toMatch(/Unknown flag|does not accept/);
@@ -103,13 +109,22 @@ test("invalid CLI configuration fails before auth, workspace, or Podman", async 
     const marker = join(root, "podman-ran");
     await mkdir(bin);
     await writeFile(config, "not json");
-    await writeFile(join(bin, "podman"), `#!/bin/sh\ntouch ${JSON.stringify(marker)}\n`, { mode: 0o700 });
-    const child = Bun.spawn([resolve(import.meta.dir, "..", "bin", "pi-pod"), "dev", root, "--config", config], {
-      cwd: root,
-      stdout: "pipe",
-      stderr: "pipe",
-      env: { ...process.env, PATH: `${bin}:${trustedBunPath()}`, XDG_STATE_HOME: join(root, "state") },
+    await writeFile(join(bin, "podman"), `#!/bin/sh\ntouch ${JSON.stringify(marker)}\n`, {
+      mode: 0o700,
     });
+    const child = Bun.spawn(
+      [resolve(import.meta.dir, "..", "..", "bin", "pi-pod"), "dev", root, "--config", config],
+      {
+        cwd: root,
+        stdout: "pipe",
+        stderr: "pipe",
+        env: {
+          ...process.env,
+          PATH: `${bin}:${trustedBunPath()}`,
+          XDG_STATE_HOME: join(root, "state"),
+        },
+      },
+    );
     const [stderr, exitCode] = await Promise.all([new Response(child.stderr).text(), child.exited]);
     expect(exitCode).toBe(1);
     expect(stderr).toContain("Configuration must be valid JSON");
@@ -128,28 +143,60 @@ test("explicit run configuration applies only the selected run preferences", asy
     const trace = join(root, "podman-arguments");
     await mkdir(bin);
     await mkdir(workspace);
-    await writeFile(config, JSON.stringify({
-      version: 1,
-      agents: { opencode: { dev: { preferences: { variant: "dev-only" } }, run: {
-        model: { provider: "openai", id: "fixture" }, preferences: { variant: "high" },
-      } } },
-    }));
-    await writeFile(join(bin, "podman"), `#!/bin/sh
+    await writeFile(
+      config,
+      JSON.stringify({
+        version: 1,
+        agents: {
+          opencode: {
+            dev: { preferences: { variant: "dev-only" } },
+            run: {
+              model: { provider: "openai", id: "fixture" },
+              preferences: { variant: "high" },
+            },
+          },
+        },
+      }),
+    );
+    await writeFile(
+      join(bin, "podman"),
+      `#!/bin/sh
 case "$1" in
   info) printf '%s\\n' '{"host":{"os":"linux","cgroupVersion":"v2","cgroupControllers":["cpu","memory","pids"],"serviceIsRemote":false,"security":{"rootless":true}}}' ;;
   run) printf '%s\\n' "$@" > ${JSON.stringify(trace)} ;;
   container) exit 1 ;;
 esac
-`, { mode: 0o700 });
-    const child = Bun.spawn([
-      resolve(import.meta.dir, "..", "bin", "pi-pod"), "run", workspace, "--workspace", "bind", "--agent", "opencode",
-      "--auth", "none", "--prompt", "fixture", "--config", config,
-    ], {
-      cwd: root,
-      stdout: "pipe",
-      stderr: "pipe",
-      env: { ...process.env, PATH: `${bin}:${trustedBunPath()}`, XDG_STATE_HOME: join(root, "state"), XDG_CONFIG_HOME: join(root, "invalid") },
-    });
+`,
+      { mode: 0o700 },
+    );
+    const child = Bun.spawn(
+      [
+        resolve(import.meta.dir, "..", "..", "bin", "pi-pod"),
+        "run",
+        workspace,
+        "--workspace",
+        "bind",
+        "--agent",
+        "opencode",
+        "--auth",
+        "none",
+        "--prompt",
+        "fixture",
+        "--config",
+        config,
+      ],
+      {
+        cwd: root,
+        stdout: "pipe",
+        stderr: "pipe",
+        env: {
+          ...process.env,
+          PATH: `${bin}:${trustedBunPath()}`,
+          XDG_STATE_HOME: join(root, "state"),
+          XDG_CONFIG_HOME: join(root, "invalid"),
+        },
+      },
+    );
     const [stderr, exitCode] = await Promise.all([new Response(child.stderr).text(), child.exited]);
     expect(exitCode, stderr).toBe(0);
     const argumentsUsed = await Bun.file(trace).text();
@@ -174,7 +221,8 @@ test("dev defaults Pi to a staged host credential without mounting host Pi state
   const hostSettings = join(hostAgent, "settings.json");
   const hostPackage = join(root, "host-extension-package");
   const trace = join(root, "podman-arguments");
-  const source = '{"openai-codex":{"type":"oauth","access":"host-access","refresh":"host-refresh","expires":1900000000000}}\n';
+  const source =
+    '{"openai-codex":{"type":"oauth","access":"host-access","refresh":"host-refresh","expires":1900000000000}}\n';
   try {
     await mkdir(bin);
     const hostExtensions = join(hostAgent, "extensions");
@@ -183,39 +231,60 @@ test("dev defaults Pi to a staged host credential without mounting host Pi state
     await mkdir(workspace);
     await writeFile(hostAuth, source);
     await writeFile(join(hostExtensions, "fixture.ts"), "export default () => {};\n");
-    await writeFile(join(hostPackage, "extensions", "package-fixture.ts"), "export default () => {};\n");
-    await writeFile(hostSettings, JSON.stringify({
-      defaultModel: "must-not-copy",
-      packages: [{ source: hostPackage, extensions: ["extensions/package-fixture.ts"] }],
-    }));
-    await writeFile(join(bin, "podman"), `#!/bin/sh
+    await writeFile(
+      join(hostPackage, "extensions", "package-fixture.ts"),
+      "export default () => {};\n",
+    );
+    await writeFile(
+      hostSettings,
+      JSON.stringify({
+        defaultModel: "must-not-copy",
+        packages: [{ source: hostPackage, extensions: ["extensions/package-fixture.ts"] }],
+      }),
+    );
+    await writeFile(
+      join(bin, "podman"),
+      `#!/bin/sh
 case "$1" in
   info) printf '%s\\n' '{"host":{"os":"linux","cgroupVersion":"v2","cgroupControllers":["cpu","memory","pids"],"serviceIsRemote":false,"security":{"rootless":true}}}' ;;
   run) printf '%s\\n' "$@" > ${JSON.stringify(trace)} ;;
   container) exit 1 ;;
 esac
-`, { mode: 0o700 });
+`,
+      { mode: 0o700 },
+    );
     await chmod(join(bin, "podman"), 0o700);
 
     const configHome = join(root, "config");
     await mkdir(join(configHome, "pi-pod"), { recursive: true });
-    await writeFile(join(configHome, "pi-pod", "config.json"), JSON.stringify({
-      version: 1,
-      agents: { pi: { dev: {
-        model: { provider: "openai-codex", id: "configured-model" }, preferences: { thinking: "high" },
-      } } },
-    }));
-    const child = Bun.spawn([resolve(import.meta.dir, "..", "bin", "pi-pod"), "dev", workspace], {
-      stdout: "pipe",
-      stderr: "pipe",
-      env: {
-        ...process.env,
-        PATH: `${bin}:${trustedBunPath()}`,
-        HOME: home,
-        XDG_STATE_HOME: state,
-        XDG_CONFIG_HOME: configHome,
+    await writeFile(
+      join(configHome, "pi-pod", "config.json"),
+      JSON.stringify({
+        version: 1,
+        agents: {
+          pi: {
+            dev: {
+              model: { provider: "openai-codex", id: "configured-model" },
+              preferences: { thinking: "high" },
+            },
+          },
+        },
+      }),
+    );
+    const child = Bun.spawn(
+      [resolve(import.meta.dir, "..", "..", "bin", "pi-pod"), "dev", workspace],
+      {
+        stdout: "pipe",
+        stderr: "pipe",
+        env: {
+          ...process.env,
+          PATH: `${bin}:${trustedBunPath()}`,
+          HOME: home,
+          XDG_STATE_HOME: state,
+          XDG_CONFIG_HOME: configHome,
+        },
       },
-    });
+    );
     const [exitCode, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()]);
 
     expect(exitCode, stderr).toBe(0);
@@ -223,8 +292,12 @@ esac
     const argumentsUsed = await Bun.file(trace).text();
     expect(argumentsUsed).not.toContain(hostAuth);
     expect(argumentsUsed).toContain("auth-staging/");
-    expect(argumentsUsed).toContain(`src=${hostExtensions},dst=/home/agent/.pi/agent/extensions,ro`);
-    expect(argumentsUsed).toContain(`src=${hostPackage},dst=/run/pi-pod-dev-resources/package-0,ro`);
+    expect(argumentsUsed).toContain(
+      `src=${hostExtensions},dst=/home/agent/.pi/agent/extensions,ro`,
+    );
+    expect(argumentsUsed).toContain(
+      `src=${hostPackage},dst=/run/pi-pod-dev-resources/package-0,ro`,
+    );
     expect(argumentsUsed).toContain("dst=/home/agent/.pi/agent/settings.json,ro,relabel=private");
     expect(argumentsUsed).not.toContain(hostSettings);
     expect(argumentsUsed).not.toContain("--no-extensions");
@@ -239,8 +312,13 @@ esac
 }, 20_000);
 
 test("public --no-config normalizes only wrapper arguments", () => {
-  expect(normalizeConfigOptOut(["dev", ".", "--no-config", "--", "--no-config"]))
-    .toEqual(["dev", ".", "--skip-config", "--", "--no-config"]);
+  expect(normalizeConfigOptOut(["dev", ".", "--no-config", "--", "--no-config"])).toEqual([
+    "dev",
+    ".",
+    "--skip-config",
+    "--",
+    "--no-config",
+  ]);
 });
 
 test("Crust preserves arguments after -- for the selected agent command", async () => {

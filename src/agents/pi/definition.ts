@@ -19,7 +19,10 @@ export const piDefinition: AgentDefinition = {
   interactiveDevResources: "pi",
   preferenceArguments(preferences, agentArgs) {
     if (preferences === undefined) return [];
-    if (!isRecord(preferences) || Object.keys(preferences).some((key) => key !== "model" && key !== "thinking")) {
+    if (
+      !isRecord(preferences) ||
+      Object.keys(preferences).some((key) => key !== "model" && key !== "thinking")
+    ) {
       throw new Error("Pi preferences support only model and thinking.");
     }
     const args: string[] = [];
@@ -34,30 +37,40 @@ export const piDefinition: AgentDefinition = {
     const thinking = (preferences as { thinking?: unknown }).thinking;
     if (thinking !== undefined) {
       if (!isPiThinkingLevel(thinking)) {
-        throw new Error("Pi thinking must be one of off, minimal, low, medium, high, xhigh, or max.");
+        throw new Error(
+          "Pi thinking must be one of off, minimal, low, medium, high, xhigh, or max.",
+        );
       }
       if (!hasAnyFlag(agentArgs, ["--thinking"])) args.push("--thinking", thinking);
     }
     return args;
   },
-  command: ({ mode, promptPath, agentArgs }) => mode === "interactive"
-    ? ["pi", "--no-session", "--no-skills", "--no-prompt-templates", "--no-themes", ...agentArgs]
-    : promptPath === undefined
-      ? [
-        "pi",
-        "--no-session",
-        "--no-extensions",
-        "--no-skills",
-        "--no-prompt-templates",
-        "--no-themes",
-        "--no-context-files",
-        "--no-approve",
-        "--print",
-        ...agentArgs,
-        "",
-      ]
-      : promptFileCommand(promptPath, agentArgs),
-  loginCommand: () => ["pi", "--no-session", "--no-extensions", "--no-skills", "--no-prompt-templates", "--no-themes"],
+  command: ({ mode, promptPath, agentArgs }) =>
+    mode === "interactive"
+      ? ["pi", "--no-session", "--no-skills", "--no-prompt-templates", "--no-themes", ...agentArgs]
+      : promptPath === undefined
+        ? [
+            "pi",
+            "--no-session",
+            "--no-extensions",
+            "--no-skills",
+            "--no-prompt-templates",
+            "--no-themes",
+            "--no-context-files",
+            "--no-approve",
+            "--print",
+            ...agentArgs,
+            "",
+          ]
+        : promptFileCommand(promptPath, agentArgs),
+  loginCommand: () => [
+    "pi",
+    "--no-session",
+    "--no-extensions",
+    "--no-skills",
+    "--no-prompt-templates",
+    "--no-themes",
+  ],
   loginInstructions: (provider) =>
     `In Pi, run /login and choose ${provider}. For ChatGPT/Codex, choose device-code login to avoid a container callback port.`,
 };
@@ -68,13 +81,17 @@ function hasAnyFlag(args: readonly string[], names: readonly string[]): boolean 
 
 function promptFileCommand(promptPath: string, agentArgs: readonly string[]): string[] {
   return promptCommand(
-    "exec pi --no-session --no-extensions --no-skills --no-prompt-templates --no-themes --no-context-files --no-approve --print \"$@\" -- \"$prompt\"",
+    'exec pi --no-session --no-extensions --no-skills --no-prompt-templates --no-themes --no-context-files --no-approve --print "$@" -- "$prompt"',
     promptPath,
     agentArgs,
   );
 }
 
-function promptCommand(command: string, promptPath: string, agentArgs: readonly string[]): string[] {
+function promptCommand(
+  command: string,
+  promptPath: string,
+  agentArgs: readonly string[],
+): string[] {
   // Appending a sentinel prevents command substitution from dropping prompt
   // trailing newlines. Neither prompt text nor agent arguments are interpolated.
   return [

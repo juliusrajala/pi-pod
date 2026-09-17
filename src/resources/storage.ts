@@ -12,9 +12,16 @@ export type WorkspaceUsageMonitor = {
  * for a hard disk guarantee.
  */
 /** Reject an already-over-budget workspace before its container is started. */
-export async function assertWorkspaceWithinLimit(path: string, maxBytes: number, label = "Workspace"): Promise<void> {
+export async function assertWorkspaceWithinLimit(
+  path: string,
+  maxBytes: number,
+  label = "Workspace",
+): Promise<void> {
   const bytes = await directoryUsageBytes(path);
-  if (bytes > maxBytes) throw new Error(`${label} storage limit exceeded before launch (${bytes} bytes > ${maxBytes} bytes).`);
+  if (bytes > maxBytes)
+    throw new Error(
+      `${label} storage limit exceeded before launch (${bytes} bytes > ${maxBytes} bytes).`,
+    );
 }
 
 export function monitorWorkspaceUsage(input: {
@@ -41,7 +48,9 @@ export function monitorWorkspaceUsage(input: {
     } catch (error) {
       if (!stopped) {
         didExceed = true;
-        input.onError?.(`Unable to measure ${input.label ?? "workspace"} usage: ${error instanceof Error ? error.message : String(error)}`);
+        input.onError?.(
+          `Unable to measure ${input.label ?? "workspace"} usage: ${error instanceof Error ? error.message : String(error)}`,
+        );
         input.controller.abort(error);
       }
     } finally {
@@ -62,7 +71,8 @@ export function monitorWorkspaceUsage(input: {
 
 async function directoryUsageBytes(path: string): Promise<number> {
   const root = await lstat(path);
-  if (!root.isDirectory() || root.isSymbolicLink()) throw new Error("workspace root is not a real directory");
+  if (!root.isDirectory() || root.isSymbolicLink())
+    throw new Error("workspace root is not a real directory");
   let total = 0;
   const entries = await readdir(path, { withFileTypes: true });
   for (const entry of entries) {
