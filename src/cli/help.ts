@@ -1,5 +1,11 @@
 import { defaultImage } from "../container/image.ts";
 
+/**
+ * Crust Core supplies parsing and routing, not an automatic help renderer.
+ * Keep this curated wrapper-level usage so it can describe shared defaults and
+ * security-sensitive behavior once, and so help can short-circuit validation
+ * before a command performs any action.
+ */
 export const usage = `Usage:
   pi-pod build [--image <image>]
   pi-pod login --agent <pi|opencode> --provider <provider> [--profile <name>] [--image <image>]
@@ -30,6 +36,10 @@ Examples:
   pi-pod run . --auth none --env OPENAI_API_KEY --prompt-file task.md
 `;
 
+/**
+ * Only inspect wrapper arguments. Tokens after `--` belong unchanged to the
+ * selected agent, including that agent's own `--help` flag.
+ */
 export function isWrapperHelpRequest(argv: readonly string[]): boolean {
   const separator = argv.indexOf("--");
   const wrapperArgs = argv.slice(0, separator === -1 ? argv.length : separator);

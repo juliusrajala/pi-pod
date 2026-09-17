@@ -2,15 +2,15 @@
 
 pi-pod supports three distinct sources. They are not interchangeable settings bundles.
 
-| Source                   | `dev`                       | `run`                        | Ownership and lifecycle                                                                                                                                     |
-| ------------------------ | --------------------------- | ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `host`                   | Default for Pi and OpenCode | Rejected                     | Reads and stages one selected host credential privately. It never mounts or writes host agent state back.                                                   |
-| Named profile            | Explicit `--auth <profile>` | Default profile is `default` | pi-pod-owned selected-provider credentials under `$XDG_STATE_HOME/pi-pod/auth/` (or `~/.local/state/pi-pod/auth/`). One container uses a profile at a time. |
-| `none` plus `--env NAME` | Yes                         | Yes                          | A trusted caller explicitly forwards one allowed API-key variable through the Podman client environment, not argv.                                          |
+| Source                   | `dev`                       | `run`                        | Ownership and lifecycle                                                                                                                                                                     |
+| ------------------------ | --------------------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `host`                   | Default for Pi and OpenCode | Rejected                     | Reads and stages one selected host credential in a fresh private per-session directory. Concurrent interactive dev sessions are supported; it never mounts or writes host agent state back. |
+| Named profile            | Explicit `--auth <profile>` | Default profile is `default` | pi-pod-owned selected-provider credentials under `$XDG_STATE_HOME/pi-pod/auth/` (or `~/.local/state/pi-pod/auth/`). One container uses a profile at a time.                                 |
+| `none` plus `--env NAME` | Yes                         | Yes                          | A trusted caller explicitly forwards one allowed API-key variable through the Podman client environment, not argv.                                                                          |
 
 ## Profiles and recovery
 
-Create a profile only when a provider needs native subscription login:
+Create a profile only when a provider needs native subscription login. Named profile sessions are intentionally serialized because the agent may refresh and persist the credential; concurrent interactive host-auth sessions do not share that lock:
 
 ```sh
 ./bin/pi-pod login --agent pi --provider openai-codex --profile worker

@@ -46,7 +46,7 @@ The removal command refuses while the exact run container or preparation reserva
 
 ## Credentials: development and autonomous work
 
-Interactive `dev` defaults to `--auth host`. Pi stages only the `openai-codex` credential from `~/.pi/agent/auth.json`; OpenCode stages only the `openai` credential from `$XDG_DATA_HOME/opencode/auth.json` (or the standard home fallback). Staging is private, no host agent directory is mounted, and pi-pod never writes the staged credential back.
+Interactive `dev` defaults to `--auth host`. Pi stages only the `openai-codex` credential from `~/.pi/agent/auth.json`; OpenCode stages only the `openai` credential from `$XDG_DATA_HOME/opencode/auth.json` (or the standard home fallback). Each session receives a fresh private stage, so concurrent host-auth dev sessions are supported. Staging is private, no host agent directory is mounted, and pi-pod never writes the staged credential back.
 
 Interactive Pi dev also loads trusted Pi extensions by default: the direct extension directory and local package roots declared in host settings are mounted read-only, and pi-pod generates filtered settings containing only package declarations and Pi model defaults. It does not mount general settings, sessions, skills, themes, analytics, credentials, or remote package sources. Pass `-- --no-extensions` to Pi to disable them.
 

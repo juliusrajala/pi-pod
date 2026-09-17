@@ -122,6 +122,76 @@ test("stages the host Pi credential for interactive dev without changing its sou
   });
 });
 
+test("runs concurrent host-auth dev sessions with distinct private mounts", async () => {
+  await withFakePodman(async (root) => {
+    const previousHome = Bun.env.HOME;
+    const home = join(root, "home");
+    const hostAgent = join(home, ".pi", "agent");
+    const hostAuth = join(hostAgent, "auth.json");
+    const firstWorkspace = join(root, "workspace-one");
+    const secondWorkspace = join(root, "workspace-two");
+    const trace = join(root, "podman-arguments");
+    try {
+      Bun.env.HOME = home;
+      await mkdir(hostAgent, { recursive: true });
+      await mkdir(firstWorkspace);
+      await mkdir(secondWorkspace);
+      await writeFile(
+        hostAuth,
+        JSON.stringify({
+          "openai-codex": {
+            type: "oauth",
+            access: "fixture-access",
+            refresh: "fixture-refresh",
+            expires: 1_900_000_000_000,
+          },
+        }),
+      );
+      await writeFile(
+        join(root, "bin", "podman"),
+        `#!/bin/sh
+case "$1" in
+  info) printf '%s\\n' '{"host":{"os":"linux","cgroupVersion":"v2","cgroupControllers":["cpu","memory","pids"],"serviceIsRemote":false,"security":{"rootless":true}}}' ;;
+  run) printf '%s\\n' "$@" >> ${JSON.stringify(trace)} ;;
+  container) exit 1 ;;
+esac
+`,
+        { mode: 0o700 },
+      );
+
+      const [first, second] = await Promise.all([
+        runAgent({
+          mode: "interactive",
+          workspace: firstWorkspace,
+          workspaceMode: "bind",
+          agentArgs: ["--no-extensions"],
+          output: { stdout: new WritableStream({ write: () => {} }) },
+        }),
+        runAgent({
+          mode: "interactive",
+          workspace: secondWorkspace,
+          workspaceMode: "bind",
+          agentArgs: ["--no-extensions"],
+          output: { stdout: new WritableStream({ write: () => {} }) },
+        }),
+      ]);
+
+      expect(first.auth).toEqual({ source: "host", reconciliation: "not-used", lock: "not-used" });
+      expect(second.auth).toEqual({ source: "host", reconciliation: "not-used", lock: "not-used" });
+      const authMounts = (await Bun.file(trace).text())
+        .split("\n")
+        .filter((value) => value.includes("dst=/home/agent/.pi/agent,rw,relabel=private"));
+      expect(authMounts).toHaveLength(2);
+      expect(new Set(authMounts).size).toBe(2);
+      expect(authMounts.every((value) => value.includes("auth-staging/"))).toBe(true);
+      expect(authMounts.every((value) => !value.includes(hostAgent))).toBe(true);
+    } finally {
+      if (previousHome === undefined) delete Bun.env.HOME;
+      else Bun.env.HOME = previousHome;
+    }
+  });
+});
+
 test("stages the host OpenCode OpenAI session for interactive dev without mounting host state", async () => {
   await withFakePodman(async (root) => {
     const previousDataHome = Bun.env.XDG_DATA_HOME;

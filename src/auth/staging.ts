@@ -30,6 +30,8 @@ type StageMetadata = {
   name: string;
   provider: string;
   containerName: string | null;
+  /** The wrapper process that owns this stage; absent on legacy stages. */
+  pid?: number;
   /** Absent on existing profile stages for backwards-compatible recovery. */
   source?: "profile" | HostAuthStageSource;
 };
@@ -67,6 +69,7 @@ export async function stageAuthProfile(
           options.containerName === undefined
             ? null
             : validIdentifier(options.containerName, "Container name"),
+        pid: process.pid,
       } satisfies StageMetadata,
       null,
       2,
@@ -161,6 +164,7 @@ async function stageHostAuthSource(input: {
           input.containerName === undefined
             ? null
             : validIdentifier(input.containerName, "Container name"),
+        pid: process.pid,
         source: input.source,
       } satisfies StageMetadata,
       null,
@@ -201,7 +205,11 @@ export async function recoverHostAuthStages(source?: HostAuthStageSource): Promi
       (source !== undefined && metadata.source !== source)
     )
       continue;
-    await assertStageContainerStopped({ directory, metadata });
+    // A host-auth stage has no shared profile lock. Another dev process may
+    // still be between staging and container creation, so a missing container
+    // is not enough to establish that this stage is orphaned.
+    if (await hostStageIsActive(metadata)) continue;
+    if (metadata.pid === undefined) continue;
     await rm(directory, { recursive: true, force: true });
   }
 }
@@ -262,6 +270,8 @@ async function readStageMetadata(path: string): Promise<StageMetadata> {
     typeof value.name !== "string" ||
     typeof value.provider !== "string" ||
     (value.containerName !== null && typeof value.containerName !== "string") ||
+    (value.pid !== undefined &&
+      (typeof value.pid !== "number" || !Number.isInteger(value.pid) || value.pid <= 0)) ||
     (value.source !== undefined && value.source !== "host-pi" && value.source !== "host-opencode")
   ) {
     throw new Error(`Invalid auth stage metadata: ${path}`);
@@ -276,9 +286,31 @@ async function readStageMetadata(path: string): Promise<StageMetadata> {
     name: value.name,
     provider: value.provider,
     containerName: value.containerName,
+    ...(value.pid === undefined ? {} : { pid: value.pid }),
     source:
       value.source === "host-pi" || value.source === "host-opencode" ? value.source : "profile",
   };
+}
+
+async function hostStageIsActive(metadata: StageMetadata): Promise<boolean> {
+  // Check the owner first: this covers the interval before Podman has created
+  // the named container and avoids asking recovery to race startup.
+  if (metadata.pid !== undefined && processExists(metadata.pid)) return true;
+  return metadata.containerName !== null && (await managedContainerExists(metadata.containerName));
+}
+
+function processExists(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return !(
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      error.code === "ESRCH"
+    );
+  }
 }
 
 async function assertStageContainerStopped(stage: {

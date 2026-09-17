@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -7,6 +7,7 @@ import {
   createAuthProfile,
   loadAuthProfile,
   recoverAuthProfile,
+  recoverHostAuthStages,
   removeAuthProfileLock,
   stageAuthProfile,
   stageHostAuth,
@@ -94,6 +95,112 @@ test("stages only the selected host Pi credential and never writes it back", asy
     await stage.reconcile();
     await stage.cleanup();
     expect(await readFile(hostAuth, "utf8")).toBe(source);
+  } finally {
+    if (previousHome === undefined) delete Bun.env.HOME;
+    else Bun.env.HOME = previousHome;
+  }
+});
+
+test("allows concurrent host stages and preserves the live owner's startup stage", async () => {
+  const previousHome = Bun.env.HOME;
+  const home = join(stateRoot, "home");
+  const hostAuth = join(home, ".pi", "agent", "auth.json");
+  try {
+    Bun.env.HOME = home;
+    await mkdir(join(home, ".pi", "agent"), { recursive: true });
+    await writeFile(
+      hostAuth,
+      JSON.stringify({
+        "openai-codex": {
+          type: "oauth",
+          access: "fixture-access",
+          refresh: "fixture-refresh",
+          expires: 1_900_000_000_000,
+        },
+      }),
+    );
+
+    const first = await stageHostAuth("host-pi", { containerName: "pi-pod-first" });
+    const second = await stageHostAuth("host-pi", { containerName: "pi-pod-second" });
+    try {
+      expect(first.directory).not.toBe(second.directory);
+      expect(first.agentStateDirectory).not.toBe(second.agentStateDirectory);
+      expect(JSON.parse(await readFile(join(first.directory, "stage.json"), "utf8")).pid).toBe(
+        process.pid,
+      );
+
+      // Both stages belong to this live process, even though neither container
+      // exists yet. Recovery must not mistake that startup interval for an
+      // orphan, and host auth must not acquire a shared profile lock.
+      await recoverHostAuthStages("host-pi");
+      expect((await lstat(first.directory)).isDirectory()).toBe(true);
+      expect((await lstat(second.directory)).isDirectory()).toBe(true);
+    } finally {
+      await first.cleanup();
+      await second.cleanup();
+    }
+  } finally {
+    if (previousHome === undefined) delete Bun.env.HOME;
+    else Bun.env.HOME = previousHome;
+  }
+});
+
+test("skips an active host stage and removes a proven orphan", async () => {
+  const previousHome = Bun.env.HOME;
+  const home = join(stateRoot, "home");
+  const hostAuth = join(home, ".pi", "agent", "auth.json");
+  try {
+    Bun.env.HOME = home;
+    await mkdir(join(home, ".pi", "agent"), { recursive: true });
+    await writeFile(
+      hostAuth,
+      JSON.stringify({
+        "openai-codex": {
+          type: "oauth",
+          access: "fixture-access",
+          refresh: "fixture-refresh",
+          expires: 1_900_000_000_000,
+        },
+      }),
+    );
+    const active = await stageHostAuth("host-pi", { containerName: "pi-pod-active" });
+    const orphan = await stageHostAuth("host-pi");
+    try {
+      const deadPid = 2_147_483_647;
+      await writeFile(
+        join(active.directory, "stage.json"),
+        JSON.stringify({
+          version: 1,
+          agent: "pi",
+          name: "host-pi",
+          provider: "openai-codex",
+          containerName: "pi-pod-active",
+          pid: deadPid,
+          source: "host-pi",
+        }),
+      );
+      await writeFile(
+        join(orphan.directory, "stage.json"),
+        JSON.stringify({
+          version: 1,
+          agent: "pi",
+          name: "host-pi",
+          provider: "openai-codex",
+          containerName: null,
+          pid: deadPid,
+          source: "host-pi",
+        }),
+      );
+
+      await withExistingContainer("pi-pod-active", async () => {
+        await recoverHostAuthStages("host-pi");
+      });
+      expect((await lstat(active.directory)).isDirectory()).toBe(true);
+      await expect(lstat(orphan.directory)).rejects.toMatchObject({ code: "ENOENT" });
+    } finally {
+      await active.cleanup();
+      await orphan.cleanup();
+    }
   } finally {
     if (previousHome === undefined) delete Bun.env.HOME;
     else Bun.env.HOME = previousHome;
