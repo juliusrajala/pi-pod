@@ -11,9 +11,10 @@ import {
 } from "./auth/profiles.ts";
 import {
   discardPendingAuthStages as discardStages,
-  recoverHostPiAuthStages,
+  recoverHostAuthStages,
   recoverPendingAuthStages,
   stageAuthProfile,
+  stageHostOpenCodeAuth,
   stageHostPiAuth,
   type AuthStage,
   type HostAuthStage,
@@ -24,9 +25,10 @@ export {
   acquireAuthProfile,
   createAuthProfile,
   loadAuthProfile,
-  recoverHostPiAuthStages,
+  recoverHostAuthStages,
   recoverPendingAuthStages,
   stageAuthProfile,
+  stageHostOpenCodeAuth,
   stageHostPiAuth,
 };
 

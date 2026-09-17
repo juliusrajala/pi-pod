@@ -66,7 +66,7 @@ export type OutputOutcome = {
 };
 
 export type AuthOutcome = {
-  /** `host` is an interactive source-only stage; it never writes to host Pi state. */
+  /** `host` is an interactive source-only stage; it never writes to host agent state. */
   source: "none" | "profile" | "host";
   reconciliation: "not-used" | "persisted" | "retained";
   lock: "not-used" | "released" | "retained" | "release-failed";

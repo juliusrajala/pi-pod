@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { acquireAuthProfile, createAuthProfile, loadAuthProfile, recoverAuthProfile, removeAuthProfileLock, stageAuthProfile, stageHostPiAuth } from "./auth.ts";
+import { acquireAuthProfile, createAuthProfile, loadAuthProfile, recoverAuthProfile, removeAuthProfileLock, stageAuthProfile, stageHostOpenCodeAuth, stageHostPiAuth } from "./auth.ts";
 import { maxAuthStageBytes } from "./auth/staging.ts";
 import { assertWorkspaceWithinLimit } from "./workspace-usage.ts";
 
@@ -71,6 +71,38 @@ test("stages only the selected host Pi credential and never writes it back", asy
     else Bun.env.HOME = previousHome;
   }
 });
+
+test("stages only the selected host OpenCode OpenAI credential and never writes it back", async () => {
+  const previousDataHome = Bun.env.XDG_DATA_HOME;
+  const dataHome = join(stateRoot, "host-data");
+  const hostAuth = join(dataHome, "opencode", "auth.json");
+  const source = redactedOpenCodeHostAuthDocument();
+  try {
+    Bun.env.XDG_DATA_HOME = dataHome;
+    await mkdir(join(dataHome, "opencode"), { recursive: true });
+    await writeFile(hostAuth, source);
+    const stage = await stageHostOpenCodeAuth();
+    const staged = JSON.parse(await readFile(stage.authFile, "utf8"));
+    expect(Object.keys(staged)).toEqual(["openai"]);
+    expect(staged.openai.type).toBe("oauth");
+    await writeFile(stage.authFile, "{}\n");
+    await stage.reconcile();
+    await stage.cleanup();
+    expect(await readFile(hostAuth, "utf8")).toBe(source);
+  } finally {
+    if (previousDataHome === undefined) delete Bun.env.XDG_DATA_HOME;
+    else Bun.env.XDG_DATA_HOME = previousDataHome;
+  }
+});
+
+function redactedOpenCodeHostAuthDocument(): string {
+  // Generate opaque values at runtime so fixtures cannot be mistaken for credentials.
+  const redacted = crypto.randomUUID();
+  return JSON.stringify({
+    openai: { type: "oauth", access: redacted, refresh: redacted, expires: 1_900_000_000_000 },
+    unrelated: { sentinel: true },
+  });
+}
 
 test("stages and persists only the selected Pi Codex credential", async () => {
   const profile = await createAuthProfile({

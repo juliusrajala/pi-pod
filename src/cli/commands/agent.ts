@@ -98,7 +98,7 @@ async function launchAgent(input: {
       prompt: input.prompt,
       agentArgs: input.agentArgs,
       environment: input.flags.env ?? [],
-      authProfile: selectedAuthProfile(input.mode, input.flags.agent as AgentName | undefined, input.flags.auth),
+      authProfile: selectedAuthProfile(input.mode, input.flags.auth),
       image: input.flags.image,
       limits: resourceLimits(input.flags),
       timeoutMs: input.timeoutMs,
@@ -113,9 +113,9 @@ async function launchAgent(input: {
   }
 }
 
-function selectedAuthProfile(mode: RunMode, agent: AgentName | undefined, configured: string | undefined): string | "none" {
+function selectedAuthProfile(mode: RunMode, configured: string | undefined): string | "none" {
   if (configured !== undefined) return configured === "none" ? "none" : configured;
-  return mode === "interactive" && (agent ?? "pi") === "pi" ? "host" : "default";
+  return mode === "interactive" ? "host" : "default";
 }
 
 function resourceLimits(flags: CommonAgentFlags): Partial<ResourceLimits> {

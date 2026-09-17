@@ -1,9 +1,10 @@
 import {
   acquireAuthProfile,
   loadAuthProfile,
-  recoverHostPiAuthStages,
+  recoverHostAuthStages,
   recoverPendingAuthStages,
   stageAuthProfile,
+  stageHostOpenCodeAuth,
   stageHostPiAuth,
 } from "../auth.ts";
 import type { AgentName, AuthOutcome, RunMode } from "../types.ts";
@@ -22,10 +23,10 @@ export function resolveCredentialSource(input: {
   mode: RunMode;
   authProfile?: string | "none";
 }): { source: CredentialSource; profileName?: string } {
-  const requested = input.authProfile ?? (input.mode === "interactive" && input.agent === "pi" ? "host" : "default");
+  const requested = input.authProfile ?? (input.mode === "interactive" ? "host" : "default");
   if (requested === "host") {
-    if (input.mode !== "interactive" || input.agent !== "pi") {
-      throw new Error("Host credentials are available only to interactive Pi dev sessions.");
+    if (input.mode !== "interactive") {
+      throw new Error("Host credentials are available only to interactive dev sessions.");
     }
     return { source: "host" };
   }
@@ -49,9 +50,11 @@ export async function stageCredentialSource(input: {
     return { outcome: { source: "none", reconciliation: "not-used", lock: "not-used" } };
   }
   if (input.source === "host") {
-    await recoverHostPiAuthStages();
+    await recoverHostAuthStages(input.agent === "pi" ? "host-pi" : "host-opencode");
     return {
-      stage: await stageHostPiAuth({ containerName: input.containerName }),
+      stage: input.agent === "pi"
+        ? await stageHostPiAuth({ containerName: input.containerName })
+        : await stageHostOpenCodeAuth({ containerName: input.containerName }),
       outcome: { source: "host", reconciliation: "not-used", lock: "not-used" },
     };
   }

@@ -9,7 +9,7 @@ export const usage = `Usage:
 Run options:
   --agent <pi|opencode>       Pi is the default
   --workspace <bind|clone>    dev defaults to bind; run defaults to clone
-  --auth <host|profile|none>  dev/Pi defaults to host; run defaults to profile "default"
+  --auth <host|profile|none>  dev defaults to host; run defaults to profile "default"
   --env <NAME>                Forward one explicitly named environment variable (repeatable)
   --image <image>             default: localhost/pi-pod:0.1.0
   --timeout <seconds>         run only; default is 600 seconds

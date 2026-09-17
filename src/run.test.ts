@@ -105,6 +105,51 @@ test("stages the host Pi credential for interactive dev without changing its sou
   });
 });
 
+test("stages the host OpenCode OpenAI session for interactive dev without mounting host state", async () => {
+  await withFakePodman(async (root) => {
+    const previousDataHome = Bun.env.XDG_DATA_HOME;
+    const dataHome = join(root, "host-data");
+    const hostAuth = join(dataHome, "opencode", "auth.json");
+    const hostSettings = join(dataHome, "opencode", "settings.json");
+    const workspace = join(root, "workspace");
+    const trace = join(root, "podman-arguments");
+    const source = `${redactedOpenCodeHostAuthDocument()}\n`;
+    try {
+      Bun.env.XDG_DATA_HOME = dataHome;
+      await mkdir(join(dataHome, "opencode"), { recursive: true });
+      await mkdir(workspace);
+      await writeFile(hostAuth, source);
+      await writeFile(hostSettings, "must-not-mount");
+      await writeFile(join(root, "bin", "podman"), `#!/bin/sh
+case "$1" in
+  info) printf '%s\\n' '{"host":{"os":"linux","cgroupVersion":"v2","cgroupControllers":["cpu","memory","pids"],"serviceIsRemote":false,"security":{"rootless":true}}}' ;;
+  run) printf '%s\\n' "$@" > ${JSON.stringify(trace)} ;;
+  container) exit 1 ;;
+esac
+`, { mode: 0o700 });
+
+      const result = await runAgent({
+        agent: "opencode",
+        mode: "interactive",
+        workspace,
+        workspaceMode: "bind",
+        output: { stdout: new WritableStream({ write: () => {} }) },
+      });
+
+      expect(result.auth).toEqual({ source: "host", reconciliation: "not-used", lock: "not-used" });
+      expect(await Bun.file(hostAuth).text()).toBe(source);
+      const argumentsUsed = await Bun.file(trace).text();
+      expect(argumentsUsed).toContain("auth-staging/");
+      expect(argumentsUsed).toContain("dst=/home/agent/.local/share/opencode,rw,relabel=private");
+      expect(argumentsUsed).not.toContain(dataHome);
+      expect(argumentsUsed).not.toContain(hostSettings);
+    } finally {
+      if (previousDataHome === undefined) delete Bun.env.XDG_DATA_HOME;
+      else Bun.env.XDG_DATA_HOME = previousDataHome;
+    }
+  });
+});
+
 test("does not mount host extensions when dev explicitly passes Pi --no-extensions", async () => {
   await withFakePodman(async (root) => {
     const previousHome = Bun.env.HOME;
@@ -147,7 +192,7 @@ esac
   });
 });
 
-test("rejects host credentials for a headless autonomous run", async () => {
+test("rejects host credentials for a headless autonomous OpenCode run", async () => {
   await withFakePodman(async (root) => {
     const workspace = join(root, "workspace");
     const marker = join(root, "podman-invoked");
@@ -158,14 +203,60 @@ exit 1
 `, { mode: 0o700 });
 
     await expect(runAgent({
+      agent: "opencode",
       mode: "headless",
       workspace,
       workspaceMode: "bind",
       authProfile: "host",
       prompt: "must not use host state",
-    })).rejects.toThrow("only to interactive Pi dev sessions");
+    })).rejects.toThrow("only to interactive dev sessions");
     expect(await lstat(join(root, "state", "pi-pod")).catch(() => undefined)).toBeUndefined();
     expect(await Bun.file(marker).exists()).toBe(false);
+  });
+});
+
+test("default headless OpenCode runs neither read nor mount host OpenCode state", async () => {
+  await withFakePodman(async (root) => {
+    const previousDataHome = Bun.env.XDG_DATA_HOME;
+    const dataHome = join(root, "host-data");
+    const hostAuth = join(dataHome, "opencode", "auth.json");
+    const hostSettings = join(dataHome, "opencode", "settings.json");
+    const workspace = join(root, "workspace");
+    const trace = join(root, "podman-arguments");
+    try {
+      Bun.env.XDG_DATA_HOME = dataHome;
+      await mkdir(join(dataHome, "opencode"), { recursive: true });
+      await mkdir(workspace);
+      // Invalid host content makes any accidental read fail the run.
+      await writeFile(hostAuth, "host-auth-must-not-be-read");
+      await writeFile(hostSettings, "host-settings-must-not-be-mounted");
+      await createAuthProfile({ agent: "opencode", name: "default", provider: "openai" });
+      await writeFile(join(root, "bin", "podman"), `#!/bin/sh
+case "$1" in
+  info) printf '%s\\n' '{"host":{"os":"linux","cgroupVersion":"v2","cgroupControllers":["cpu","memory","pids"],"serviceIsRemote":false,"security":{"rootless":true}}}' ;;
+  run) printf '%s\\n' "$@" > ${JSON.stringify(trace)} ;;
+  container) exit 1 ;;
+esac
+`, { mode: 0o700 });
+
+      const result = await runAgent({
+        agent: "opencode",
+        mode: "headless",
+        workspace,
+        workspaceMode: "bind",
+        prompt: "fixture task",
+        output: { stdout: new WritableStream({ write: () => {} }) },
+      });
+
+      expect(result.auth.source).toBe("profile");
+      const argumentsUsed = await Bun.file(trace).text();
+      expect(argumentsUsed).not.toContain(dataHome);
+      expect(argumentsUsed).not.toContain(hostAuth);
+      expect(argumentsUsed).not.toContain(hostSettings);
+    } finally {
+      if (previousDataHome === undefined) delete Bun.env.XDG_DATA_HOME;
+      else Bun.env.XDG_DATA_HOME = previousDataHome;
+    }
   });
 });
 
@@ -444,6 +535,15 @@ test("reports an explicit no-auth outcome and streams output without buffering",
     expect(result.auth).toEqual({ source: "none", reconciliation: "not-used", lock: "not-used" });
   });
 });
+
+function redactedOpenCodeHostAuthDocument(): string {
+  // Generate opaque values at runtime so fixtures cannot be mistaken for credentials.
+  const redacted = crypto.randomUUID();
+  return JSON.stringify({
+    openai: { type: "oauth", access: redacted, refresh: redacted, expires: 1_900_000_000_000 },
+    unrelated: { sentinel: true },
+  });
+}
 
 function concat(chunks: readonly Uint8Array[]): Uint8Array {
   const total = chunks.reduce((size, chunk) => size + chunk.byteLength, 0);

@@ -36,13 +36,15 @@ The package also declares a `pi-pod` binary for a linked/installed package; use 
 
 ## Credentials: development versus autonomous work
 
-### Interactive Pi development
+### Interactive development
 
-`./bin/pi-pod dev .` defaults to `--auth host` for Pi. It reads your existing `~/.pi/agent/auth.json`, validates and stages only its `openai-codex` credential in a private temporary directory, then starts the interactive container. It does **not** mount your host Pi directory or write the staged credential back to the host file.
+`./bin/pi-pod dev .` defaults to `--auth host`. For Pi, it reads your existing `~/.pi/agent/auth.json`, validates and stages only its `openai-codex` credential in a private temporary directory, then starts the interactive container. It does **not** mount your host Pi directory or write the staged credential back to the host file.
+
+`./bin/pi-pod dev . --agent opencode` similarly reads only the `openai` credential in `$XDG_DATA_HOME/opencode/auth.json` (or `~/.local/share/opencode/auth.json` when unset), validates and stages it privately. This lets OpenCode use the existing host OpenAI session without a separate container OAuth login. It does not mount or copy back host OpenCode configuration, sessions, plugins, or other state.
 
 Dev loads trusted Pi extensions by default. It mounts `~/.pi/agent/extensions/` read-only, plus read-only local package roots referenced by your host Pi settings; pi-pod generates a filtered settings file containing only those package extension declarations and the host default provider/model/thinking level. It does not mount general settings, sessions, skills, themes, analytics, or credentials. Pass Pi's explicit flag after the separator to disable all extensions: `./bin/pi-pod dev . -- --no-extensions`. Remote npm/git package sources are rejected rather than installed in the container.
 
-This is the local development path for a Codex subscription: no second container OAuth login is required. A provider can rotate tokens server-side, so a later host Pi login may need refreshing even though pi-pod never writes the host file. Use `--auth <profile>` or `--auth none` to opt out of host credentials. Host credentials are rejected for `run` and all headless/library-autonomous use.
+This is the local development path for a Codex subscription: no second container OAuth login is required. A provider can rotate tokens server-side, so a later host login may need refreshing even though pi-pod never writes host credentials. Use `--auth <profile>` or `--auth none` to opt out of host credentials. Host credentials are rejected for `run` and all headless/library-autonomous use.
 
 ### Autonomous profiles
 
@@ -143,7 +145,7 @@ Values travel in the Podman client environment, not command-line arguments. `GIT
 ```text
 --agent pi|opencode
 --workspace bind|clone
---auth host|<profile>|none          host is interactive-Pi-dev only
+--auth host|<profile>|none          host is interactive-dev only
 --env NAME                         repeatable explicit forwarding
 --image IMAGE
 --timeout SECONDS                  headless only; defaults to 600
@@ -165,7 +167,7 @@ Each run uses:
 - writable `/workspace`, plus bounded tmpfs `/tmp` and `/home/agent` only;
 - no host networking, published ports, proxy forwarding, host home, parent project directories, or arbitrary Podman-option escape hatch;
 - rootless `pasta` networking by default without published ports; Podman disables automatic pasta forwarding when no port is published;
-- a container-local, otherwise empty agent home. Interactive Pi `dev` stages the selected host Codex credential and mounts trusted host extension directories/local extension packages read-only; host sessions, general settings, analytics, Swarmia configuration, skills, MCP servers, and shell configuration are not imported;
+- a container-local, otherwise empty agent home. Interactive Pi `dev` stages the selected host Codex credential and mounts trusted host extension directories/local extension packages read-only. Interactive OpenCode `dev` stages only its selected host OpenAI credential. Neither path imports host sessions, general settings, analytics, plugins, skills, MCP servers, or shell configuration;
 - explicit Pi flags which disable extension/skill/prompt/theme discovery. Headless Pi also disables context files and declines project trust. OpenCode runs with `--pure`, preserves its bundled subscription integrations, and disables sharing/snapshots/autoupdate; its project configuration merging remains an OpenCode behavior, but it executes only inside the container.
 
 For a wrapper-owned clone and credential staging directory, Podman applies private SELinux relabeling. A direct workspace is **not** relabeled by default because that recursively changes host labels. Pass `--relabel-workspace` only after deciding that it is appropriate for that folder.

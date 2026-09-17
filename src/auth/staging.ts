@@ -5,7 +5,7 @@ import {
   normalizedCredentialDocument,
   validateCredentialDocument,
 } from "./credentials.ts";
-import { hostPiCodexCredential } from "./host.ts";
+import { hostOpenCodeOpenAiCredential, hostPiCodexCredential } from "./host.ts";
 import {
   isAgent,
   isMissing,
@@ -21,6 +21,8 @@ import { validIdentifier } from "../utils.ts";
 /** Includes native lock/temp siblings as well as the bounded auth.json payload. */
 export const maxAuthStageBytes = 1024 * 1024;
 
+type HostStageSource = "host-pi" | "host-opencode";
+
 type StageMetadata = {
   version: typeof profileVersion;
   agent: AuthProfile["agent"];
@@ -28,7 +30,7 @@ type StageMetadata = {
   provider: string;
   containerName: string | null;
   /** Absent on existing profile stages for backwards-compatible recovery. */
-  source?: "profile" | "host-pi";
+  source?: "profile" | HostStageSource;
 };
 
 export type AuthStage = {
@@ -88,20 +90,50 @@ export async function stageAuthProfile(profile: AuthProfile, options: { containe
   };
 }
 
-/** Reconcile all matching interrupted stages once their managed containers are gone. */
+/** Stage only Pi's selected host Codex credential for an interactive source-only session. */
 export async function stageHostPiAuth(options: { containerName?: string } = {}): Promise<HostAuthStage> {
-  const source = await hostPiCodexCredential();
+  return stageHostAuth({
+    agent: "pi",
+    name: "host-pi",
+    provider: "openai-codex",
+    source: "host-pi",
+    credential: hostPiCodexCredential,
+    ...options,
+  });
+}
+
+/** Stage only OpenCode's selected host OpenAI session for interactive development. */
+export async function stageHostOpenCodeAuth(options: { containerName?: string } = {}): Promise<HostAuthStage> {
+  return stageHostAuth({
+    agent: "opencode",
+    name: "host-opencode",
+    provider: "openai",
+    source: "host-opencode",
+    credential: hostOpenCodeOpenAiCredential,
+    ...options,
+  });
+}
+
+async function stageHostAuth(input: {
+  agent: AuthProfile["agent"];
+  name: string;
+  provider: string;
+  source: HostStageSource;
+  credential: () => Promise<string>;
+  containerName?: string;
+}): Promise<HostAuthStage> {
+  const source = await input.credential();
   const directory = join(await privateStateDirectory(), "auth-staging", crypto.randomUUID());
   await ensurePrivateStateDirectory(directory);
   await writePrivateFile(join(directory, "stage.json"), `${JSON.stringify({
     version: profileVersion,
-    agent: "pi",
-    name: "host-pi",
-    provider: "openai-codex",
-    containerName: options.containerName === undefined
+    agent: input.agent,
+    name: input.name,
+    provider: input.provider,
+    containerName: input.containerName === undefined
       ? null
-      : validIdentifier(options.containerName, "Container name"),
-    source: "host-pi",
+      : validIdentifier(input.containerName, "Container name"),
+    source: input.source,
   } satisfies StageMetadata, null, 2)}\n`);
   const agentStateDirectory = join(directory, "agent-state");
   await ensurePrivateStateDirectory(agentStateDirectory);
@@ -111,7 +143,7 @@ export async function stageHostPiAuth(options: { containerName?: string } = {}):
     directory,
     agentStateDirectory,
     authFile: join(agentStateDirectory, "auth.json"),
-    // Host credentials are source-only: never propagate agent writes to HOME.
+    // Host credentials are source-only: never propagate agent writes to host state.
     reconcile: async () => {},
     cleanup: async () => {
       if (cleaned) return;
@@ -121,8 +153,8 @@ export async function stageHostPiAuth(options: { containerName?: string } = {}):
   };
 }
 
-/** Remove an interrupted host-credential stage only after its container is gone. */
-export async function recoverHostPiAuthStages(): Promise<void> {
+/** Remove interrupted source-only host stages only after their containers are gone. */
+export async function recoverHostAuthStages(source?: HostStageSource): Promise<void> {
   const root = join(await privateStateDirectory(), "auth-staging");
   const entries = await readdir(root, { withFileTypes: true }).catch((error) => {
     if (isMissing(error)) return [];
@@ -132,7 +164,10 @@ export async function recoverHostPiAuthStages(): Promise<void> {
     if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
     const directory = join(root, entry.name);
     const metadata = await readStageMetadata(join(directory, "stage.json")).catch(() => undefined);
-    if (metadata?.source !== "host-pi") continue;
+    if (
+      (metadata?.source !== "host-pi" && metadata?.source !== "host-opencode") ||
+      (source !== undefined && metadata.source !== source)
+    ) continue;
     await assertStageContainerStopped({ directory, metadata });
     await rm(directory, { recursive: true, force: true });
   }
@@ -189,7 +224,7 @@ async function readStageMetadata(path: string): Promise<StageMetadata> {
     typeof value.name !== "string" ||
     typeof value.provider !== "string" ||
     (value.containerName !== null && typeof value.containerName !== "string") ||
-    (value.source !== undefined && value.source !== "host-pi")
+    (value.source !== undefined && value.source !== "host-pi" && value.source !== "host-opencode")
   ) {
     throw new Error(`Invalid auth stage metadata: ${path}`);
   }
@@ -202,7 +237,7 @@ async function readStageMetadata(path: string): Promise<StageMetadata> {
     name: value.name,
     provider: value.provider,
     containerName: value.containerName,
-    source: value.source === "host-pi" ? "host-pi" : "profile",
+    source: value.source === "host-pi" || value.source === "host-opencode" ? value.source : "profile",
   };
 }
 
