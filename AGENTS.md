@@ -14,7 +14,7 @@ Use the repository-pinned Bun runtime:
 mise exec -- bun install
 mise exec -- bun test
 mise exec -- bun run typecheck
-mise exec -- ./bin/pi-pod build
+mise exec -- ./scripts/dev-launcher build
 ```
 
 Run opt-in integration tests only when Podman/the required user-systemd environment is available:
@@ -24,7 +24,7 @@ PI_POD_INTEGRATION=1 mise exec -- bun test src/container/podman.integration.test
 PI_POD_SYSTEMD_INTEGRATION=1 mise exec -- bun test src/cli/delegation.integration.test.ts
 ```
 
-Use Bun, not Node, npm, pnpm, or yarn. Invoke the CLI through `./bin/pi-pod`, not `src/cli.ts` from an untrusted workspace: the launcher protects against workspace-controlled Bun configuration.
+Use Bun, not Node, npm, pnpm, or yarn. The development launcher is `./scripts/dev-launcher`; do not invoke `src/cli.ts` from an untrusted workspace, because the launcher protects against workspace-controlled Bun configuration. Normal local use goes through the compiled release bundle.
 
 ## Layout
 

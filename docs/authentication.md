@@ -13,10 +13,10 @@ pi-pod supports three distinct sources. They are not interchangeable settings bu
 Create a profile only when a provider needs native subscription login. Named profile sessions are intentionally serialized because the agent may refresh and persist the credential; concurrent interactive host-auth sessions do not share that lock:
 
 ```sh
-./bin/pi-pod login --agent pi --provider openai-codex --profile worker
-./bin/pi-pod auth recover --agent pi --profile worker
-./bin/pi-pod auth discard --agent pi --profile worker
-./bin/pi-pod auth unlock --agent pi --profile worker
+./scripts/dev-launcher login --agent pi --provider openai-codex --profile worker
+./scripts/dev-launcher auth recover --agent pi --profile worker
+./scripts/dev-launcher auth discard --agent pi --profile worker
+./scripts/dev-launcher auth unlock --agent pi --profile worker
 ```
 
 Use recovery only when the command reports an interrupted stage and verifies its recorded container is absent. `discard` removes an unwanted retained stage; `unlock` removes only a stale lock whose PID and exact container are gone. Do not delete the auth state tree as a troubleshooting shortcut.
@@ -32,7 +32,7 @@ Use recovery only when the command reports an interrupted stage and verifies its
 ## API keys
 
 ```sh
-./bin/pi-pod run . --auth none --env ANTHROPIC_API_KEY --prompt "Summarize the repository"
+./scripts/dev-launcher run . --auth none --env ANTHROPIC_API_KEY --prompt "Summarize the repository"
 ```
 
 Names are validated against a narrow allowlist policy. Forge, SSH, database, proxy, cloud-secret, and unrelated credential variables are rejected. Never pass a credential if repository code run by the agent must not receive it.

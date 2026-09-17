@@ -16,7 +16,7 @@
     "README.md",
     "docs/**/*.md",
     "config/agents/*.json",
-    "bin/pi-pod",
+    "scripts/dev-launcher",
     "container/Containerfile",
     "src/**/*.ts",
     "!src/**/*.test.ts"
@@ -35,11 +35,13 @@
     "bun": ">=1.3.14"
   },
   "bin": {
-    "pi-pod": "./bin/pi-pod"
+    "pi-pod-dev": "./scripts/dev-launcher"
   },
   "scripts": {
-    "cli": "./bin/pi-pod",
-    "build:image": "./bin/pi-pod build",
+    "cli:dev": "./scripts/dev-launcher",
+    "build:image:dev": "./scripts/dev-launcher build",
+    "build:release": "bun run scripts/build-release.ts",
+    "verify:release": "bun run scripts/verify-release.ts",
     "test": "bun test",
     "typecheck": "bun x tsc --noEmit",
     "format": "prettier --write .",

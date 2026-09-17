@@ -1,4 +1,5 @@
 import { podmanNeedsDelegatedScope } from "../container/args.ts";
+import { getTrustedExecutablePath } from "./bootstrap.ts";
 
 const delegationMarker = "PI_POD_DELEGATED_SCOPE";
 
@@ -10,12 +11,7 @@ const delegationMarker = "PI_POD_DELEGATED_SCOPE";
 export async function reexecInDelegatedScope(argv: readonly string[]): Promise<boolean> {
   if (Bun.env[delegationMarker] === "1" || !(await podmanNeedsDelegatedScope())) return false;
 
-  const launcher = Bun.env.PI_POD_LAUNCHER;
-  if (launcher === undefined) {
-    throw new Error(
-      "pi-pod needs a delegated cgroup scope; invoke it through the pi-pod launcher.",
-    );
-  }
+  const launcher = getTrustedExecutablePath();
 
   console.error(
     "pi-pod: entering a delegated user scope to enforce CPU, memory, and process limits.",

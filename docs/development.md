@@ -9,11 +9,24 @@ mise exec -- bun install
 mise exec -- bun test
 mise exec -- bun run format:check
 mise exec -- bun run typecheck
-mise exec -- ./bin/pi-pod build
+mise exec -- ./scripts/dev-launcher build
 git diff --check
 ```
 
-If Mise is unavailable in a pi-pod worker, first verify `bun --version` matches the pin, then use that Bun directly. Use Bun, not Node, npm, pnpm, or yarn. Format intentionally with `bun run format`; `bun run format:check` never rewrites files. Prettier is development-only; no hooks or editor settings are installed. Invoke the source CLI through `./bin/pi-pod`; do not execute `src/cli.ts` from an untrusted workspace.
+If Mise is unavailable in a pi-pod worker, first verify `bun --version` matches the pin, then use that Bun directly. Use Bun, not Node, npm, pnpm, or yarn. Format intentionally with `bun run format`; `bun run format:check` never rewrites files. Prettier is development-only; no hooks or editor settings are installed. Invoke the source CLI through `./scripts/dev-launcher`; do not execute `src/cli.ts` from an untrusted workspace.
+
+## Release bundle
+
+The supported release target is currently Linux x64 only. From the canonical repository root, a pinned Bun can produce the bundle:
+
+```sh
+mise exec -- bun run build:release -- --target linux-x64
+mise exec -- bun run verify:release -- dist/pi-pod-linux-x64
+```
+
+The bundle contains `pi-pod`, `container/Containerfile`, `README.md`, and `SHA256SUMS`. Verify the checksums before copying or running it. The compiled executable is the host controller and still requires rootless Podman, cgroup v2, and a locally built image (`./pi-pod build`); it is not a Pi/OpenCode runtime. The source launcher remains the contributor and local-package entrypoint because it works across supported Bun source environments and preserves the source checkout bootstrap boundary. Compilation explicitly disables Bun dotenv, bunfig, tsconfig, and package.json autoloading; compilation alone is not the security guarantee.
+
+Do not build or advertise macOS, Windows, or Linux arm64 artifacts. Arm64 needs a separately validated image, Bun asset, and Podman smoke test.
 
 Opt-in integration tests require the relevant local Podman/user-systemd setup:
 
@@ -26,7 +39,7 @@ Tests use temporary fake credentials and fixtures. Never make personal configura
 
 ## Source map and reading order
 
-1. `src/cli/bootstrap.ts` and `bin/pi-pod`: trusted host startup boundary.
+1. `src/cli/bootstrap.ts` and `scripts/dev-launcher`: trusted host startup boundary.
 2. `src/cli/`: syntax and command composition.
 3. `src/execution/`: public run/login orchestration, policy, prompt staging, and outcomes.
 4. `src/auth/`: auth policy, selected-provider storage, staging, locks, and recovery.

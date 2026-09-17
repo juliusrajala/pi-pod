@@ -14,32 +14,42 @@ Source is public at [github.com/juliusrajala/pi-pod](https://github.com/juliusra
 git clone https://github.com/juliusrajala/pi-pod.git
 cd pi-pod
 bun install
-./bin/pi-pod build
-./bin/pi-pod --help
+./scripts/dev-launcher build
+./scripts/dev-launcher --help
 ```
 
 The shared `localhost/pi-pod:0.1.0` image contains Pi 0.85.1, OpenCode 1.18.27, Bun 1.3.14, Node, Git, Bash, `fd`, and ripgrep. It currently targets `linux/amd64`. The build pins its Node base digest and validates Bun's download checksum.
 
-From a source checkout, always invoke `./bin/pi-pod`, not `src/cli.ts` from an untrusted workspace. The launcher starts Bun from the trusted package directory, disables automatic `.env` loading, and restores the caller directory before interpreting a workspace path. For a linked/installed package, use `pi-pod`. A local Bun consumer can use `bun add /path/to/pi-pod` with Bun 1.3.14 or later.
+From a source checkout, invoke the development launcher `./scripts/dev-launcher`, not `src/cli.ts` from an untrusted workspace. The launcher starts Bun from the trusted package directory, disables automatic `.env` loading, and restores the caller directory before interpreting a workspace path. For a linked/installed package, use `pi-pod`. A local Bun consumer can use `bun add /path/to/pi-pod` with Bun 1.3.14 or later.
+
+A Linux x64 release bundle contains a compiled host controller and its adjacent audited `container/Containerfile`; it does not contain the agent image and does not require Bun:
+
+```sh
+sha256sum --check SHA256SUMS
+./pi-pod build
+./pi-pod --help
+```
+
+Release bundles still require native Linux, rootless Podman, and cgroup v2. They are not supported on macOS or Windows. Source checkout, package, and release entrypoints are documented in [development.md](docs/development.md).
 
 ## Start here
 
 ```sh
 # Interactive development: direct writable folder.
-./bin/pi-pod dev .
-./bin/pi-pod dev . --agent opencode
+./scripts/dev-launcher dev .
+./scripts/dev-launcher dev . --agent opencode
 
 # Headless work: a clean local-HEAD clone, retained for review.
-./bin/pi-pod run . --prompt "Fix the failing unit tests"
+./scripts/dev-launcher run . --prompt "Fix the failing unit tests"
 
 # Explicit task API key; values stay in the Podman client environment, not argv.
-./bin/pi-pod run . --auth none --env ANTHROPIC_API_KEY --prompt "Summarize the repository"
+./scripts/dev-launcher run . --auth none --env ANTHROPIC_API_KEY --prompt "Summarize the repository"
 ```
 
 `dev` defaults to `bind` and `run` defaults to `clone`. A bind workspace can be dirty and is never removed, reset, committed, or copied by pi-pod. Clone mode requires a clean normal Git repository and includes local committed (even unpushed) `HEAD`, but not uncommitted, ignored, or untracked files. Every clone that reaches agent startup is retained under `$XDG_STATE_HOME/pi-pod/runs/<run-id>/workspace`; review it, then remove it explicitly:
 
 ```sh
-./bin/pi-pod remove <run-id>
+./scripts/dev-launcher remove <run-id>
 ```
 
 The removal command refuses while the exact run container or preparation reservation remains.
@@ -53,16 +63,16 @@ Interactive Pi dev also loads trusted Pi extensions by default: the direct exten
 Headless `run` and library-autonomous use never read host Pi/OpenCode credentials, settings, extensions, sessions, skills, analytics, or shell configuration. `run` rejects `--auth host` before workspace, state, or Podman side effects. It uses the pi-pod-owned `default` profile unless `--auth none` is explicit.
 
 ```sh
-./bin/pi-pod login --agent pi --provider openai-codex --profile worker
-./bin/pi-pod login --agent opencode --provider <provider-id> --profile worker
+./scripts/dev-launcher login --agent pi --provider openai-codex --profile worker
+./scripts/dev-launcher login --agent opencode --provider <provider-id> --profile worker
 ```
 
 Profiles persist only selected native provider credentials below `$XDG_STATE_HOME/pi-pod/auth/` (or `~/.local/state/pi-pod/auth/`). One container uses a profile at a time. For recovery of a private interrupted stage, use the named command only after its diagnostic confirms that the recorded container is gone:
 
 ```sh
-./bin/pi-pod auth recover --agent pi --profile worker
-./bin/pi-pod auth discard --agent pi --profile worker
-./bin/pi-pod auth unlock --agent pi --profile worker
+./scripts/dev-launcher auth recover --agent pi --profile worker
+./scripts/dev-launcher auth discard --agent pi --profile worker
+./scripts/dev-launcher auth unlock --agent pi --profile worker
 ```
 
 ## Container boundary
@@ -88,8 +98,8 @@ The root README is an entry point; maintained details live in [docs/](docs/READM
 
 This cannot run in CI and must never expose a token. After building the image, use a disposable empty directory and named profile:
 
-1. Run `./bin/pi-pod login --agent pi --provider openai-codex --profile v01-check` and complete Pi's device-code flow. Exit with `/quit`.
-2. In a fresh process, run `./bin/pi-pod run /path/to/empty-dir --workspace bind --auth v01-check --prompt "Reply only: AUTH_OK" --timeout 60`; confirm it does not ask to log in again.
+1. Run `./scripts/dev-launcher login --agent pi --provider openai-codex --profile v01-check` and complete Pi's device-code flow. Exit with `/quit`.
+2. In a fresh process, run `./scripts/dev-launcher run /path/to/empty-dir --workspace bind --auth v01-check --prompt "Reply only: AUTH_OK" --timeout 60`; confirm it does not ask to log in again.
 3. Repeat after provider refresh/expiry timing permits.
 4. For every intended OpenCode subscription provider, repeat with `--agent opencode --provider <provider-id>`.
 

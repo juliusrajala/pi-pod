@@ -1,13 +1,13 @@
 # Usage
 
-Invoke a source checkout through `./bin/pi-pod`, not `src/cli.ts` from a target workspace. The launcher starts Bun from the trusted package directory and disables workspace-controlled Bun configuration.
+Invoke a source checkout through `./scripts/dev-launcher`, not `src/cli.ts` from a target workspace. The launcher starts Bun from the trusted package directory and disables workspace-controlled Bun configuration.
 
 ```sh
-./bin/pi-pod build
-./bin/pi-pod dev .
-./bin/pi-pod dev . --agent opencode
-./bin/pi-pod run . --prompt "Fix the failing unit tests"
-./bin/pi-pod run . --auth none --env ANTHROPIC_API_KEY --prompt-file task.md
+./scripts/dev-launcher build
+./scripts/dev-launcher dev .
+./scripts/dev-launcher dev . --agent opencode
+./scripts/dev-launcher run . --prompt "Fix the failing unit tests"
+./scripts/dev-launcher run . --auth none --env ANTHROPIC_API_KEY --prompt-file task.md
 ```
 
 ## Workspace modes
@@ -17,7 +17,7 @@ Invoke a source checkout through `./bin/pi-pod`, not `src/cli.ts` from a target 
 `run` defaults to `clone`: pi-pod requires a clean normal Git repository and clones local `HEAD` into wrapper-owned state. Committed but unpushed work is included; uncommitted, ignored, and untracked files are not. Every launched clone is retained until you review it and run:
 
 ```sh
-./bin/pi-pod remove <run-id>
+./scripts/dev-launcher remove <run-id>
 ```
 
 `remove` refuses while the exact run container or its preparation reservation exists. It never removes a bind workspace.
@@ -49,7 +49,8 @@ Use `--relabel-workspace` only after deciding that recursive SELinux relabeling 
 ## Troubleshooting
 
 - **Prerequisites:** pi-pod requires native Linux, local rootless Podman, cgroup v2 controllers, and sometimes `systemd-run --user` for a delegated terminal scope.
-- **Image:** run `./bin/pi-pod build`; launches never pull or build an image automatically.
+- **Image:** run `./scripts/dev-launcher build` (or `./pi-pod build` from a Linux x64 release bundle); launches never pull or build an image automatically.
+- **Entrypoint:** contributors and local Bun packages use the development `scripts/dev-launcher`. A Linux x64 release bundle uses its compiled host controller, adjacent audited `container/Containerfile`, and `SHA256SUMS`; it still requires rootless Podman and does not contain Pi or OpenCode.
 - **Authentication:** see [authentication.md](authentication.md). Do not delete state broadly; use the named recovery command only after its diagnostic says the stage is safe to recover or discard.
 - **Workspace:** clone mode requires clean local Git history; use `--workspace bind` for a dirty human checkout.
 - **Execution and cleanup:** a retained clone or auth stage means pi-pod could not prove safe cleanup. Keep it for recovery rather than removing state manually.

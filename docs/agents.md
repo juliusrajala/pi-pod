@@ -16,8 +16,8 @@ D1 supports model selection in a common `{ "provider", "id" }` envelope for eith
 Pi's `openai-codex` and OpenCode's `openai` identifiers are agent-native and not interchangeable. A profile belongs to one agent and provider. `login` invokes the agent-native flow:
 
 ```sh
-./bin/pi-pod login --agent pi --provider openai-codex --profile worker
-./bin/pi-pod login --agent opencode --provider <provider-id> --profile worker
+./scripts/dev-launcher login --agent pi --provider openai-codex --profile worker
+./scripts/dev-launcher login --agent opencode --provider <provider-id> --profile worker
 ```
 
 A host credential is an interactive-development convenience, not a general source. Pi reads only `~/.pi/agent/auth.json`'s selected `openai-codex` value; OpenCode reads only `$XDG_DATA_HOME/opencode/auth.json` (with the standard home fallback)'s selected `openai` value. Each interactive session gets a fresh private stage, so concurrent host-auth dev sessions are supported. Neither host directory is mounted or copied back. `run` rejects `--auth host` before state, workspace, or Podman side effects.
