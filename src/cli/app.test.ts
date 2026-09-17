@@ -10,6 +10,10 @@ function trustedBunPath(): string {
   return `${dirname(process.execPath)}:${process.env.PATH}`;
 }
 
+function sourceLauncher(): string {
+  return resolve(import.meta.dir, "..", "..", "scripts", "dev-launcher");
+}
+
 test("launcher does not load a caller workspace Bun preload", async () => {
   const root = await mkdtemp(join(tmpdir(), "pi-pod-cli-"));
   try {
@@ -20,7 +24,7 @@ test("launcher does not load a caller workspace Bun preload", async () => {
       `await Bun.write(${JSON.stringify(marker)}, "ran");\n`,
     );
 
-    const child = Bun.spawn([resolve(import.meta.dir, "..", "..", "bin", "pi-pod"), "--help"], {
+    const child = Bun.spawn([sourceLauncher(), "--help"], {
       cwd: root,
       stdout: "pipe",
       stderr: "pipe",
@@ -49,7 +53,7 @@ test("launcher rejects a Bun runtime below its pinned minimum", async () => {
     await writeFile(bun, "#!/bin/sh\necho 1.3.9\n");
     await chmod(bun, 0o755);
 
-    const child = Bun.spawn([resolve(import.meta.dir, "..", "..", "bin", "pi-pod"), "--help"], {
+    const child = Bun.spawn([sourceLauncher(), "--help"], {
       cwd: root,
       stdout: "pipe",
       stderr: "pipe",
@@ -80,7 +84,7 @@ test("Crust rejects invalid input before auth, workspace, or Podman actions", as
       ["build", "unexpected"],
       ["login", "--agent", "pi", "--provider", "openai-codex", "--", "unexpected"],
     ]) {
-      const child = Bun.spawn([resolve(import.meta.dir, "..", "..", "bin", "pi-pod"), ...argv], {
+      const child = Bun.spawn([sourceLauncher(), ...argv], {
         cwd: root,
         stdout: "pipe",
         stderr: "pipe",
@@ -112,19 +116,16 @@ test("invalid CLI configuration fails before auth, workspace, or Podman", async 
     await writeFile(join(bin, "podman"), `#!/bin/sh\ntouch ${JSON.stringify(marker)}\n`, {
       mode: 0o700,
     });
-    const child = Bun.spawn(
-      [resolve(import.meta.dir, "..", "..", "bin", "pi-pod"), "dev", root, "--config", config],
-      {
-        cwd: root,
-        stdout: "pipe",
-        stderr: "pipe",
-        env: {
-          ...process.env,
-          PATH: `${bin}:${trustedBunPath()}`,
-          XDG_STATE_HOME: join(root, "state"),
-        },
+    const child = Bun.spawn([sourceLauncher(), "dev", root, "--config", config], {
+      cwd: root,
+      stdout: "pipe",
+      stderr: "pipe",
+      env: {
+        ...process.env,
+        PATH: `${bin}:${trustedBunPath()}`,
+        XDG_STATE_HOME: join(root, "state"),
       },
-    );
+    });
     const [stderr, exitCode] = await Promise.all([new Response(child.stderr).text(), child.exited]);
     expect(exitCode).toBe(1);
     expect(stderr).toContain("Configuration must be valid JSON");
@@ -171,7 +172,7 @@ esac
     );
     const child = Bun.spawn(
       [
-        resolve(import.meta.dir, "..", "..", "bin", "pi-pod"),
+        sourceLauncher(),
         "run",
         workspace,
         "--workspace",
@@ -271,20 +272,17 @@ esac
         },
       }),
     );
-    const child = Bun.spawn(
-      [resolve(import.meta.dir, "..", "..", "bin", "pi-pod"), "dev", workspace],
-      {
-        stdout: "pipe",
-        stderr: "pipe",
-        env: {
-          ...process.env,
-          PATH: `${bin}:${trustedBunPath()}`,
-          HOME: home,
-          XDG_STATE_HOME: state,
-          XDG_CONFIG_HOME: configHome,
-        },
+    const child = Bun.spawn([sourceLauncher(), "dev", workspace], {
+      stdout: "pipe",
+      stderr: "pipe",
+      env: {
+        ...process.env,
+        PATH: `${bin}:${trustedBunPath()}`,
+        HOME: home,
+        XDG_STATE_HOME: state,
+        XDG_CONFIG_HOME: configHome,
       },
-    );
+    });
     const [exitCode, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()]);
 
     expect(exitCode, stderr).toBe(0);
