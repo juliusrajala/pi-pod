@@ -21,7 +21,7 @@ import { validIdentifier } from "../utils.ts";
 /** Includes native lock/temp siblings as well as the bounded auth.json payload. */
 export const maxAuthStageBytes = 1024 * 1024;
 
-type HostStageSource = "host-pi" | "host-opencode";
+export type HostAuthStageSource = "host-pi" | "host-opencode";
 
 type StageMetadata = {
   version: typeof profileVersion;
@@ -30,7 +30,7 @@ type StageMetadata = {
   provider: string;
   containerName: string | null;
   /** Absent on existing profile stages for backwards-compatible recovery. */
-  source?: "profile" | HostStageSource;
+  source?: "profile" | HostAuthStageSource;
 };
 
 export type AuthStage = {
@@ -90,35 +90,36 @@ export async function stageAuthProfile(profile: AuthProfile, options: { containe
   };
 }
 
-/** Stage only Pi's selected host Codex credential for an interactive source-only session. */
-export async function stageHostPiAuth(options: { containerName?: string } = {}): Promise<HostAuthStage> {
-  return stageHostAuth({
-    agent: "pi",
-    name: "host-pi",
-    provider: "openai-codex",
-    source: "host-pi",
-    credential: hostPiCodexCredential,
-    ...options,
-  });
-}
-
-/** Stage only OpenCode's selected host OpenAI session for interactive development. */
-export async function stageHostOpenCodeAuth(options: { containerName?: string } = {}): Promise<HostAuthStage> {
-  return stageHostAuth({
-    agent: "opencode",
-    name: "host-opencode",
-    provider: "openai",
-    source: "host-opencode",
-    credential: hostOpenCodeOpenAiCredential,
-    ...options,
-  });
-}
-
-async function stageHostAuth(input: {
+const hostAuthSources: Readonly<Record<HostAuthStageSource, {
   agent: AuthProfile["agent"];
   name: string;
   provider: string;
-  source: HostStageSource;
+  credential: () => Promise<string>;
+}>> = {
+  "host-pi": {
+    agent: "pi",
+    name: "host-pi",
+    provider: "openai-codex",
+    credential: hostPiCodexCredential,
+  },
+  "host-opencode": {
+    agent: "opencode",
+    name: "host-opencode",
+    provider: "openai",
+    credential: hostOpenCodeOpenAiCredential,
+  },
+};
+
+/** Stage only the selected reviewed host credential for an interactive source-only session. */
+export async function stageHostAuth(source: HostAuthStageSource, options: { containerName?: string } = {}): Promise<HostAuthStage> {
+  return stageHostAuthSource({ source, ...hostAuthSources[source], ...options });
+}
+
+async function stageHostAuthSource(input: {
+  agent: AuthProfile["agent"];
+  name: string;
+  provider: string;
+  source: HostAuthStageSource;
   credential: () => Promise<string>;
   containerName?: string;
 }): Promise<HostAuthStage> {
@@ -154,7 +155,7 @@ async function stageHostAuth(input: {
 }
 
 /** Remove interrupted source-only host stages only after their containers are gone. */
-export async function recoverHostAuthStages(source?: HostStageSource): Promise<void> {
+export async function recoverHostAuthStages(source?: HostAuthStageSource): Promise<void> {
   const root = join(await privateStateDirectory(), "auth-staging");
   const entries = await readdir(root, { withFileTypes: true }).catch((error) => {
     if (isMissing(error)) return [];

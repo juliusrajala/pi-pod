@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import { buildPodmanRunArgs, podmanEnvironment } from "./podman.ts";
-import { defaultResourceLimits } from "./types.ts";
+import { defaultResourceLimits } from "./defaults.ts";
 
 const originalOpenAi = Bun.env.OPENAI_API_KEY;
 const originalGitHub = Bun.env.GITHUB_TOKEN;

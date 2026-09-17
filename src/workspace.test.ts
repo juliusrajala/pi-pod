@@ -110,7 +110,8 @@ test("clone mode uses local HEAD without ignored files or a shared object store"
 
   const workspace = await prepareWorkspace({ path: source, mode: "clone", runId: "run-1" });
 
-  expect(workspace.owned).toBe(true);
+  expect(workspace.mode).toBe("clone");
+  if (workspace.mode !== "clone") throw new Error("Expected clone workspace.");
   expect(workspace.baseRevision).toBe(baseRevision);
   expect(await Bun.file(join(workspace.path, ".env")).exists()).toBe(false);
   expect((await git(["remote"], workspace.path)).trim()).toBe("");

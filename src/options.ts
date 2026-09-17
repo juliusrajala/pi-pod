@@ -1,5 +1,5 @@
+import { defaultResourceLimits } from "./defaults.ts";
 import type { ResourceLimits, RunMode } from "./types.ts";
-import { defaultResourceLimits } from "./types.ts";
 
 const memoryPattern = /^(\d+(?:\.\d+)?)([bkmgte]?)$/iu;
 const memoryMultipliers: Record<string, number> = {

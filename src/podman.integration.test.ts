@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildPodmanRunArgs } from "./podman.ts";
-import { defaultResourceLimits } from "./types.ts";
+import { defaultResourceLimits } from "./defaults.ts";
 import { hostToolEnvironment } from "./utils/process.ts";
 
 let root = "";

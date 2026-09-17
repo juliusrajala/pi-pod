@@ -3,7 +3,8 @@ import { chmod, lstat, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { createAuthProfile } from "./auth.ts";
-import { login, runAgent } from "./run.ts";
+import { login } from "./login.ts";
+import { runAgent } from "./run.ts";
 import { removeRun } from "./workspace.ts";
 
 async function withFakePodman(action: (root: string) => Promise<void>): Promise<void> {
@@ -576,10 +577,11 @@ test("reports an owned clone reservation released after verified container clean
       output: { stdout: new WritableStream({ write: () => {} }) },
     });
 
-    expect(result.workspace.owned).toBe(true);
+    expect(result.workspace.mode).toBe("clone");
+    if (result.workspace.mode !== "clone") throw new Error("Expected retained clone.");
     expect(result.cleanup.reservation).toBe("released");
     expect((await lstat(result.workspace.path)).isDirectory()).toBe(true);
-    await removeRun(result.workspace.runId!);
+    await removeRun(result.workspace.runId);
     expect(await lstat(result.workspace.path).catch(() => undefined)).toBeUndefined();
   });
 });

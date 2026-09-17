@@ -1,6 +1,6 @@
 # Agent container wrapper: implementation plan
 
-**Status: implementation in progress. Local-HEAD isolation and first-release subscription authentication are confirmed requirements. Core wrapper, image, local clone, staged Pi credentials, CLI, and automated tests are implemented; real account login/refresh needs interactive validation. No orchestrator changes yet.**
+**Status: historical implementation record.** The documented wrapper, image, local clone, staged credentials, CLI, and automated tests were implemented in later checkpoints; user-assisted real-account login/refresh remains a manual validation. No orchestrator changes were made. Current behavior and maintained limits are in [the documentation index](../docs/README.md); this plan preserves its original decisions and proposals.
 
 ## Goal
 

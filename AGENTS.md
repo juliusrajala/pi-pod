@@ -4,7 +4,7 @@
 
 `pi-pod` is a Bun TypeScript CLI/library that runs Pi or OpenCode in rootless Podman. It is a security boundary for local development and autonomous runs, not an orchestrator, daemon, or deployment platform.
 
-Read `README.md` before changing behavior. The plans in `plans/` and adversarial constraints in `reviews/` document security decisions that should not be silently weakened.
+Read `README.md` before changing behavior. Maintained contributor and security guidance lives in `docs/development.md` and `docs/security.md`; the plans in `plans/` and adversarial constraints in `reviews/` preserve decisions that should not be silently weakened.
 
 ## Commands
 

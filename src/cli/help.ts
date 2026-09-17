@@ -1,3 +1,5 @@
+import { defaultImage } from "../defaults.ts";
+
 export const usage = `Usage:
   pi-pod build [--image <image>]
   pi-pod login --agent <pi|opencode> --provider <provider> [--profile <name>] [--image <image>]
@@ -11,7 +13,9 @@ Run options:
   --workspace <bind|clone>    dev defaults to bind; run defaults to clone
   --auth <host|profile|none>  dev defaults to host; run defaults to profile "default"
   --env <NAME>                Forward one explicitly named environment variable (repeatable)
-  --image <image>             default: localhost/pi-pod:0.1.0
+  --image <image>             default: ${defaultImage}
+  --config <absolute path>    selected agent/mode preferences; dev replaces automatic config
+  --no-config                 dev only; skip the automatic/explicit preference file layer
   --timeout <seconds>         run only; default is 600 seconds
   --network <pasta|none>      default: pasta
   --relabel-workspace         explicitly allow Podman SELinux relabeling of a bind workspace

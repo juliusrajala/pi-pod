@@ -1,5 +1,7 @@
 # Readability refactor and autonomous validation
 
+**Status: historical implementation record.** Its completed structural and autonomous-validation checkpoints are reflected in the maintained [architecture](../docs/architecture.md), [authentication](../docs/authentication.md), [development](../docs/development.md), and [security](../docs/security.md) documentation. User-assisted OAuth validation remains manual; this plan preserves the original evidence and deferred work.
+
 ## Goal
 
 Make the implementation easier to review without changing its security contract, then validate the credential paths needed by headless/autonomous callers.

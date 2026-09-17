@@ -1,9 +1,8 @@
 import { Crust } from "@crustjs/core";
 import { resolve } from "node:path";
+import { defaultImage } from "../../defaults.ts";
 import { hostToolEnvironment } from "../../utils/process.ts";
 import { requireNoAgentArguments, requireNoExtraArguments } from "./validation.ts";
-
-const defaultImage = "localhost/pi-pod:0.1.0";
 
 export const buildCommand = new Crust("build")
   .meta({ description: "Build the pinned agent image" })

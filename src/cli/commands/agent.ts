@@ -1,5 +1,6 @@
 import { Crust } from "@crustjs/core";
 import { resolve } from "node:path";
+import { loadCliPreferences } from "../../config/load.ts";
 import { maxPromptBytes } from "../../prompt.ts";
 import { runAgent } from "../../run.ts";
 import { agents, workspaceModes, type AgentName, type ResourceLimits, type RunMode, type RunResult, type WorkspaceMode } from "../../types.ts";
@@ -21,6 +22,7 @@ const commonAgentFlags = {
   pids: { type: "number" },
   "workspace-bytes": { type: "number" },
   "temporary-bytes": { type: "number" },
+  config: { type: "string" },
 } as const;
 
 type CommonAgentFlags = {
@@ -36,6 +38,8 @@ type CommonAgentFlags = {
   pids?: number;
   "workspace-bytes"?: number;
   "temporary-bytes"?: number;
+  config?: string;
+  "skip-config"?: boolean;
 };
 
 export const devCommand = new Crust("dev")
@@ -44,7 +48,10 @@ export const devCommand = new Crust("dev")
     { name: "directory", type: "path", required: true },
     { name: "arguments", type: "string", variadic: true },
   ] as const)
-  .flags(commonAgentFlags)
+  .flags({
+    ...commonAgentFlags,
+    "skip-config": { type: "boolean" },
+  } as const)
   .run(async ({ args, flags, rawArgs }) => {
     requireNoExtraArguments(args.arguments, "dev");
     await launchAgent({
@@ -87,6 +94,13 @@ async function launchAgent(input: {
   prompt?: string;
   timeoutMs?: number;
 }): Promise<void> {
+  // Configuration must fail before delegation, workspace/auth preparation, or Podman.
+  const preferences = await loadCliPreferences({
+    mode: input.mode,
+    agent: (input.flags.agent as AgentName | undefined) ?? "pi",
+    configPath: input.flags.config,
+    noConfig: input.flags["skip-config"] === true,
+  });
   if (await reexecInDelegatedScope(process.argv.slice(2))) return;
   const interrupt = interruptSignal();
   try {
@@ -96,9 +110,10 @@ async function launchAgent(input: {
       workspace: input.workspace,
       workspaceMode: input.flags.workspace as WorkspaceMode | undefined,
       prompt: input.prompt,
+      preferences,
       agentArgs: input.agentArgs,
       environment: input.flags.env ?? [],
-      authProfile: selectedAuthProfile(input.mode, input.flags.auth),
+      authProfile: input.flags.auth,
       image: input.flags.image,
       limits: resourceLimits(input.flags),
       timeoutMs: input.timeoutMs,
@@ -111,11 +126,6 @@ async function launchAgent(input: {
   } finally {
     interrupt.dispose();
   }
-}
-
-function selectedAuthProfile(mode: RunMode, configured: string | undefined): string | "none" {
-  if (configured !== undefined) return configured === "none" ? "none" : configured;
-  return mode === "interactive" ? "host" : "default";
 }
 
 function resourceLimits(flags: CommonAgentFlags): Partial<ResourceLimits> {

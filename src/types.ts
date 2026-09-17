@@ -1,5 +1,9 @@
-export const agents = ["pi", "opencode"] as const;
-export type AgentName = (typeof agents)[number];
+import { agentNames } from "./agents/registry.ts";
+import type { AgentPreferences } from "./config/types.ts";
+import type { AgentName } from "./agents/registry.ts";
+
+export const agents = agentNames;
+export type { AgentName };
 
 export const workspaceModes = ["bind", "clone"] as const;
 export type WorkspaceMode = (typeof workspaceModes)[number];
@@ -20,22 +24,25 @@ export type ResourceLimits = {
   temporaryBytes: number;
 };
 
-export const defaultResourceLimits: ResourceLimits = {
-  memory: "4g",
-  cpus: 4,
-  pids: 512,
-  workspaceBytes: 4 * 1024 * 1024 * 1024,
-  temporaryBytes: 512 * 1024 * 1024,
+/** Caller-owned bind workspaces are never eligible for retained-run deletion. */
+export type BindWorkspace = {
+  mode: "bind";
+  path: string;
+  owned: false;
+  sourcePath: string;
 };
 
-export type PreparedWorkspace = {
-  mode: WorkspaceMode;
+/** Only pi-pod-created clone workspaces carry retained-run ownership data. */
+export type CloneWorkspace = {
+  mode: "clone";
   path: string;
-  owned: boolean;
-  runId?: string;
-  sourcePath?: string;
-  baseRevision?: string;
+  owned: true;
+  runId: string;
+  sourcePath: string;
+  baseRevision: string;
 };
+
+export type PreparedWorkspace = BindWorkspace | CloneWorkspace;
 
 /**
  * Trusted host-caller options. Do not expose this type directly to an agent or
@@ -47,6 +54,8 @@ export type RunAgentOptions = {
   workspace: string;
   workspaceMode?: WorkspaceMode;
   prompt?: string;
+  /** Typed preferences supplied by a trusted caller; the library never reads a config file. */
+  preferences?: AgentPreferences;
   agentArgs?: readonly string[];
   environment?: readonly string[];
   authProfile?: string | "none";

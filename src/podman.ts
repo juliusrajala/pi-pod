@@ -1,5 +1,5 @@
 import { stat } from "node:fs/promises";
-import { agentDefinition } from "./agents.ts";
+import { agentDefinition } from "./agents/registry.ts";
 import type { AgentName, ResourceLimits, RunMode } from "./types.ts";
 import { commandOutput, hostToolEnvironment } from "./utils/process.ts";
 import { assertSafeMountPath } from "./utils.ts";

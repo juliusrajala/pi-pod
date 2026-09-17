@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "agents": {
+    "pi": {
+      "dev": {
+        "model": {
+          "provider": "openai-codex",
+          "id": "your-model-id"
+        },
+        "preferences": {
+          "thinking": "high"
+        }
+      }
+    }
+  }
+}

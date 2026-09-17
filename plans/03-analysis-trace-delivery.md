@@ -1,6 +1,6 @@
 # Opt-in analysis traces and host-side delivery
 
-**Status: planned.** This follows the autonomous-validation closeout in Plan 02. It does not enable analytics implicitly or change the existing default privacy boundary.
+**Status: planned and not implemented.** This follows the autonomous-validation closeout in Plan 02. It does not enable analytics implicitly or change the existing default privacy boundary. Current supported configuration is documented in [docs/configuration.md](../docs/configuration.md); this plan preserves the proposal and its required policy decisions.
 
 ## Goal
 

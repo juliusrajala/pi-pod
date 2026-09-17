@@ -14,8 +14,7 @@ import {
   recoverHostAuthStages,
   recoverPendingAuthStages,
   stageAuthProfile,
-  stageHostOpenCodeAuth,
-  stageHostPiAuth,
+  stageHostAuth,
   type AuthStage,
   type HostAuthStage,
 } from "./auth/staging.ts";
@@ -28,8 +27,7 @@ export {
   recoverHostAuthStages,
   recoverPendingAuthStages,
   stageAuthProfile,
-  stageHostOpenCodeAuth,
-  stageHostPiAuth,
+  stageHostAuth,
 };
 
 /** Recover interrupted stages while holding the same exclusive profile lock as a live agent. */

@@ -1,5 +1,5 @@
 import { Crust } from "@crustjs/core";
-import { login } from "../../run.ts";
+import { login } from "../../login.ts";
 import { agents, type AgentName } from "../../types.ts";
 import { reexecInDelegatedScope } from "../delegation.ts";
 import { interruptSignal } from "../signals.ts";

@@ -1,4 +1,5 @@
-export { login, removeAgentRun, runAgent } from "./src/run.ts";
+export { login } from "./src/login.ts";
+export { removeAgentRun, runAgent } from "./src/run.ts";
 export { prepareWorkspace } from "./src/workspace.ts";
 export { buildPodmanRunArgs } from "./src/podman.ts";
 export {
@@ -6,6 +7,7 @@ export {
   recoverAuthProfile,
   removeAuthProfileLock,
 } from "./src/auth.ts";
+export type { AgentPreferences, ModelPreference, OpenCodeAgentPreferences, PiAgentPreferences, PiThinkingLevel } from "./src/config/types.ts";
 export type {
   AgentName,
   AuthOutcome,

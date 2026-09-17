@@ -4,9 +4,9 @@ import {
   recoverHostAuthStages,
   recoverPendingAuthStages,
   stageAuthProfile,
-  stageHostOpenCodeAuth,
-  stageHostPiAuth,
+  stageHostAuth,
 } from "../auth.ts";
+import { agentDefinition } from "../agents/registry.ts";
 import type { AgentName, AuthOutcome, RunMode } from "../types.ts";
 
 export type CredentialSource = "host" | "profile" | "none";
@@ -23,7 +23,15 @@ export function resolveCredentialSource(input: {
   mode: RunMode;
   authProfile?: string | "none";
 }): { source: CredentialSource; profileName?: string } {
-  const requested = input.authProfile ?? (input.mode === "interactive" ? "host" : "default");
+  const defaultSource = input.mode === "interactive"
+    ? agentDefinition(input.agent).hostAuth === undefined
+      ? undefined
+      : "host"
+    : "default";
+  const requested = input.authProfile ?? defaultSource;
+  if (requested === undefined) {
+    throw new Error(`${input.agent} has no reviewed host-auth capability; use --auth <profile> or --auth none with an explicit API-key environment variable.`);
+  }
   if (requested === "host") {
     if (input.mode !== "interactive") {
       throw new Error("Host credentials are available only to interactive dev sessions.");
@@ -50,11 +58,13 @@ export async function stageCredentialSource(input: {
     return { outcome: { source: "none", reconciliation: "not-used", lock: "not-used" } };
   }
   if (input.source === "host") {
-    await recoverHostAuthStages(input.agent === "pi" ? "host-pi" : "host-opencode");
+    const hostAuth = agentDefinition(input.agent).hostAuth;
+    if (hostAuth === undefined) {
+      throw new Error(`${input.agent} does not support interactive host authentication; use --auth <profile> or --auth none with an explicit API-key environment variable.`);
+    }
+    await recoverHostAuthStages(hostAuth.source);
     return {
-      stage: input.agent === "pi"
-        ? await stageHostPiAuth({ containerName: input.containerName })
-        : await stageHostOpenCodeAuth({ containerName: input.containerName }),
+      stage: await stageHostAuth(hostAuth.source, { containerName: input.containerName }),
       outcome: { source: "host", reconciliation: "not-used", lock: "not-used" },
     };
   }

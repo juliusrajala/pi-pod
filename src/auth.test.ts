@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { acquireAuthProfile, createAuthProfile, loadAuthProfile, recoverAuthProfile, removeAuthProfileLock, stageAuthProfile, stageHostOpenCodeAuth, stageHostPiAuth } from "./auth.ts";
+import { acquireAuthProfile, createAuthProfile, loadAuthProfile, recoverAuthProfile, removeAuthProfileLock, stageAuthProfile, stageHostAuth } from "./auth.ts";
 import { maxAuthStageBytes } from "./auth/staging.ts";
 import { assertWorkspaceWithinLimit } from "./workspace-usage.ts";
 
@@ -56,7 +56,7 @@ test("stages only the selected host Pi credential and never writes it back", asy
     Bun.env.HOME = home;
     await mkdir(join(home, ".pi", "agent"), { recursive: true });
     await writeFile(hostAuth, source);
-    const stage = await stageHostPiAuth();
+    const stage = await stageHostAuth("host-pi");
     expect(JSON.parse(await readFile(stage.authFile, "utf8"))).toEqual({
       "openai-codex": { type: "oauth", access: "host-access", refresh: "host-refresh", expires: 1_900_000_000_000 },
     });
@@ -81,7 +81,7 @@ test("stages only the selected host OpenCode OpenAI credential and never writes 
     Bun.env.XDG_DATA_HOME = dataHome;
     await mkdir(join(dataHome, "opencode"), { recursive: true });
     await writeFile(hostAuth, source);
-    const stage = await stageHostOpenCodeAuth();
+    const stage = await stageHostAuth("host-opencode");
     const staged = JSON.parse(await readFile(stage.authFile, "utf8"));
     expect(Object.keys(staged)).toEqual(["openai"]);
     expect(staged.openai.type).toBe("oauth");

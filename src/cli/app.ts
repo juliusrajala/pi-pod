@@ -32,5 +32,13 @@ export async function executeCli(argv: readonly string[]): Promise<void> {
     console.log(usage);
     return;
   }
-  await app.execute({ argv: [...argv] });
+  await app.execute({ argv: normalizeConfigOptOut(argv) });
+}
+
+/** Crust reserves `no-*` flag names; retain the public --no-config spelling. */
+export function normalizeConfigOptOut(argv: readonly string[]): string[] {
+  const separator = argv.indexOf("--");
+  const wrapper = argv.slice(0, separator === -1 ? argv.length : separator)
+    .map((value) => value === "--no-config" ? "--skip-config" : value);
+  return separator === -1 ? wrapper : [...wrapper, ...argv.slice(separator)];
 }

@@ -1,6 +1,6 @@
 # Adversarial review: initial implementation
 
-Status: implementation restarted in small review gates. **Do not yet rely on this wrapper for hostile repositories or real credentials.** Findings remain historical evidence; implementation checkpoints below record their narrow fixes and verification.
+Status: historical adversarial evidence. Findings and completed checkpoints below remain preserved; maintained guarantees and limits are in [docs/security.md](../docs/security.md), with current lifecycle/auth behavior in [docs/architecture.md](../docs/architecture.md) and [docs/authentication.md](../docs/authentication.md). User-assisted real-credential validation remains separate from automated tests.
 
 ## Review sequence
 

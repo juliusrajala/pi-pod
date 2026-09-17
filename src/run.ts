@@ -1,42 +1,27 @@
-import { loginCommand, loginInstructions } from "./agents.ts";
-import { resolvedResourceLimits, resolvedTimeoutMs } from "./options.ts";
 import { stagePrompt, type PromptStage } from "./prompt.ts";
 import { maxAuthStageBytes } from "./auth/staging.ts";
 import { runPodmanContainer } from "./container/lifecycle.ts";
-import {
-  acquireAuthProfile,
-  createAuthProfile,
-  recoverPendingAuthStages,
-  stageAuthProfile,
-} from "./auth.ts";
 import {
   assertDevResourceSource,
   hostPiExtensionsDirectory,
   stageHostPiExtensionPackages,
   type DevResourceStage,
-} from "./dev-resources.ts";
+} from "./agents/pi/dev-resources.ts";
 import { assertMountSource, assertPodmanAvailable, buildPodmanRunArgs, podmanEnvironment } from "./podman.ts";
-import type { AgentName, AuthOutcome, LoginOptions, LoginResult, RunAgentOptions, RunResult } from "./types.ts";
-import { agents, defaultResourceLimits } from "./types.ts";
+import type { AgentName, AuthOutcome, RunAgentOptions, RunResult } from "./types.ts";
+
 import { commandOutput, hostToolEnvironment } from "./utils/process.ts";
 import { validIdentifier } from "./utils.ts";
 import { assertWorkspaceWithinLimit, monitorWorkspaceUsage } from "./workspace-usage.ts";
 import { discardUnlaunchedRun, prepareWorkspace, releaseRunReservation, removeRun } from "./workspace.ts";
-import { resolveCredentialSource, stageCredentialSource, type StagedCredential } from "./run/credentials.ts";
-
-const defaultImage = "localhost/pi-pod:0.1.0";
-const headlessTimeoutMs = 10 * 60 * 1_000;
+import { stageCredentialSource, type StagedCredential } from "./run/credentials.ts";
+import { resolveRunPolicy } from "./run/options.ts";
 
 export async function runAgent(input: RunAgentOptions): Promise<RunResult> {
-  const agent = input.agent ?? "pi";
-  assertAgent(agent);
-  const workspaceMode = input.workspaceMode ?? (input.mode === "interactive" ? "bind" : "clone");
-  const credentialSource = resolveCredentialSource({ agent, mode: input.mode, authProfile: input.authProfile });
-  const limits = resolvedResourceLimits(input.limits);
-  const image = input.image?.trim() || defaultImage;
+  const policy = resolveRunPolicy(input);
+  const { agent, definition, workspaceMode, credentialSource, limits, image, timeoutMs, network, preferenceArgs } = policy;
   const containerName = `pi-pod-${crypto.randomUUID().slice(0, 12)}`;
   const controller = new AbortController();
-  const timeoutMs = resolvedTimeoutMs(input.mode, input.timeoutMs, headlessTimeoutMs);
   const onAbort = () => controller.abort(input.signal?.reason);
   input.signal?.addEventListener("abort", onAbort, { once: true });
   if (input.signal?.aborted) onAbort();
@@ -97,8 +82,10 @@ export async function runAgent(input: RunAgentOptions): Promise<RunResult> {
       await assertMountSource(authStage.agentStateDirectory);
       await assertWorkspaceWithinLimit(authStage.agentStateDirectory, maxAuthStageBytes, "Authentication staging");
     }
-    const agentArgs = input.agentArgs ?? [];
-    const loadHostExtensions = input.mode === "interactive" && agent === "pi" && !agentArgs.includes("--no-extensions");
+    // Native passthrough follows validated preferences and therefore wins
+    // without emitting a second managed preference flag.
+    const agentArgs = [...preferenceArgs, ...(input.agentArgs ?? [])];
+    const loadHostExtensions = input.mode === "interactive" && definition.interactiveDevResources === "pi" && !agentArgs.includes("--no-extensions");
     const extensionsDirectory = loadHostExtensions ? await hostPiExtensionsDirectory() : undefined;
     devResources = loadHostExtensions ? await stageHostPiExtensionPackages() : undefined;
     if (extensionsDirectory !== undefined) await assertMountSource(extensionsDirectory);
@@ -125,9 +112,9 @@ export async function runAgent(input: RunAgentOptions): Promise<RunResult> {
       image,
       containerName,
       limits,
-      network: input.network ?? "pasta",
+      network,
       tty: input.mode === "interactive",
-      runId: workspace.runId,
+      runId: workspace.mode === "clone" ? workspace.runId : undefined,
     });
 
     // execute
@@ -196,16 +183,17 @@ export async function runAgent(input: RunAgentOptions): Promise<RunResult> {
     };
     return result;
   } catch (error) {
-    if (!launched && workspace?.owned && workspace.runId !== undefined) {
-      await discardUnlaunchedRun(workspace.runId, containerName).catch((cleanupError) => {
-        input.onDiagnostic?.(`Could not remove unstarted clone ${workspace!.runId}: ${errorMessage(cleanupError)}`);
+    if (!launched && workspace?.mode === "clone") {
+      const runId = workspace.runId;
+      await discardUnlaunchedRun(runId, containerName).catch((cleanupError) => {
+        input.onDiagnostic?.(`Could not remove unstarted clone ${runId}: ${errorMessage(cleanupError)}`);
       });
     }
     throw error;
   } finally {
     // Verify cleanup, reconcile/discard staged state, then release reservations.
     for (const monitor of monitors) monitor.stop();
-    if (workspace?.owned && workspace.runId !== undefined) {
+    if (workspace?.mode === "clone") {
       if (containerRemoved) {
         try {
           await releaseRunReservation(workspace.runId, containerName);
@@ -304,66 +292,6 @@ export async function removeAgentRun(runId: string): Promise<void> {
     throw new Error(`Run ${runId} still has a container. Stop it before removing its workspace.`);
   }
   await removeRun(runId);
-}
-
-export async function login(input: LoginOptions): Promise<LoginResult> {
-  assertAgent(input.agent);
-  input.signal?.throwIfAborted();
-  const profileName = input.profile ?? "default";
-  const provider = input.provider.trim();
-  const containerName = `pi-pod-login-${crypto.randomUUID().slice(0, 12)}`;
-  const profile = await createAuthProfile({ agent: input.agent, name: profileName, provider });
-  const lock = await acquireAuthProfile(profile, { containerName });
-  let stage: Awaited<ReturnType<typeof stageAuthProfile>> | undefined;
-  let retainProfileLock = false;
-  try {
-    await recoverPendingAuthStages(profile);
-    await assertPodmanAvailable();
-    stage = await stageAuthProfile(profile, { containerName });
-    input.onDiagnostic?.(loginInstructions(input.agent, provider));
-    const args = buildPodmanRunArgs({
-      agent: input.agent,
-      mode: "interactive",
-      authDirectory: stage.agentStateDirectory,
-      agentArgs: [],
-      environment: [],
-      image: input.image?.trim() || defaultImage,
-      containerName,
-      limits: defaultResourceLimits,
-      network: "pasta",
-      tty: true,
-      command: loginCommand(input.agent, provider),
-    });
-    const execution = await runPodmanContainer({
-      args,
-      name: containerName,
-      environment: podmanEnvironment([]),
-      signal: input.signal,
-      output: input.output,
-      onDiagnostic: input.onDiagnostic,
-    });
-    if (!execution.cleanup.removed) {
-      retainProfileLock = true;
-      throw new Error(`Could not verify removal of login container ${containerName}: ${execution.cleanup.error ?? "unknown cleanup failure"}`);
-    }
-    if (execution.aborted) throw new DOMException("Login aborted.", "AbortError");
-    if (execution.exitCode !== 0) throw new Error(`${input.agent} login exited with status ${execution.exitCode}.`);
-    await stage.reconcile();
-    await stage.cleanup();
-    stage = undefined;
-    return { agent: input.agent, provider, profile: profileName };
-  } finally {
-    if (stage !== undefined) {
-      // A failed or interrupted login may contain a newer rotating token. Keep
-      // the isolated file rather than overwriting the known-good profile.
-      input.onDiagnostic?.("Login credential staging was retained for recovery.");
-    }
-    if (!retainProfileLock) await lock.release();
-  }
-}
-
-function assertAgent(agent: string): asserts agent is AgentName {
-  if (!(agents as readonly string[]).includes(agent)) throw new Error(`Unsupported agent: ${agent}`);
 }
 
 function errorMessage(error: unknown): string {

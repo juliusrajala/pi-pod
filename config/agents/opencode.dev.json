@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "agents": {
+    "opencode": {
+      "dev": {
+        "model": {
+          "provider": "openai",
+          "id": "your-model-id"
+        },
+        "preferences": {
+          "variant": "high"
+        }
+      }
+    }
+  }
+}

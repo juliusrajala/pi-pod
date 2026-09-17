@@ -4,7 +4,7 @@ import {
   assertSupportedCredentialProvider,
   validateCredentialDocument,
 } from "./credentials.ts";
-import type { AgentName } from "../types.ts";
+import { agentNames, type AgentName } from "../agents/registry.ts";
 import { ensurePrivateStateDirectory, privateStateDirectory, readBoundedText, writeNewPrivateFile } from "../utils/fs.ts";
 import { validIdentifier } from "../utils.ts";
 
@@ -86,7 +86,7 @@ export function validProvider(value: string): string {
 }
 
 export function isAgent(value: unknown): value is AgentName {
-  return value === "pi" || value === "opencode";
+  return typeof value === "string" && (agentNames as readonly string[]).includes(value);
 }
 
 export function isMissing(error: unknown): error is NodeJS.ErrnoException {
