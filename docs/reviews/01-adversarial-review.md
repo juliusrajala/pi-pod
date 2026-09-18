@@ -1,6 +1,6 @@
 # Adversarial review: initial implementation
 
-Status: historical adversarial evidence. Findings and completed checkpoints below remain preserved; maintained guarantees and limits are in [docs/security.md](../docs/security.md), with current lifecycle/auth behavior in [docs/architecture.md](../docs/architecture.md) and [docs/authentication.md](../docs/authentication.md). User-assisted real-credential validation remains separate from automated tests.
+Status: historical adversarial evidence. Findings and completed checkpoints below remain preserved; maintained guarantees and limits are in [security](../security.md), with current lifecycle/auth behavior in [architecture](../architecture.md) and [authentication](../authentication.md). User-assisted real-credential validation remains separate from automated tests.
 
 ## Review sequence
 

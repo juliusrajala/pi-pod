@@ -1,119 +1,84 @@
 # pi-pod
 
-Run Pi or OpenCode in a rootless Podman container with one writable project mount. pi-pod is a Bun library and CLI for local/self-hosted use. It owns workspace preparation, selected credential staging, Podman restrictions, cancellation, and retained clones. It does **not** commit, push, open pull requests, copy changes back, run a daemon, or act as an orchestrator.
+**Run Pi or OpenCode in a container, with access to the project you choose.**
 
-Source is public at [github.com/juliusrajala/pi-pod](https://github.com/juliusrajala/pi-pod); it is source-available under [Apache-2.0 with Commons Clause](#license). The package remains private: registry publication is not a v0.1 goal.
+pi-pod gives your coding agent a rootless Podman workspace with selected credentials and resource limits. Use it interactively in your working directory, or give it a task in a separate clone that you review afterward. Available as a CLI and a [Bun library](docs/library.md) for local and self-hosted use.
 
-## Requirements and installation
+- **Work alongside an agent:** `dev` edits your project directly.
+- **Hand off a task:** `run` works in a clean clone and keeps the result for review.
+- **Control what it receives:** one writable project mount, selected authentication, and no general host-home access.
 
-- Linux with local **rootless** Podman, cgroup v2 resource limits, and `systemd-run --user` when a terminal scope does not delegate CPU control.
-- Bun 1.3.14 or later; this checkout pins 1.3.14 in `.mise.toml`.
-- Git for clone mode.
+[Get started](#quick-start) · [Usage guide](docs/usage.md) · [All docs](docs/README.md) · [Security](docs/security.md)
+
+## Quick start
+
+### 1. Build the CLI and agent image
+
+You need **Linux x64**, **rootless Podman** with cgroup v2, and **Git**. Some terminal environments also need `systemd-run --user` for CPU limits. Use **Bun 1.3.14** to build the compiled CLI below; Bun is not needed to run it. Already have a bundle? Start with [bundle setup](docs/installation.md#set-up-the-bundle).
 
 ```sh
 git clone https://github.com/juliusrajala/pi-pod.git
 cd pi-pod
 bun install
-./scripts/dev-launcher build
-./scripts/dev-launcher --help
-```
-
-The shared `localhost/pi-pod:0.1.0` image contains Pi 0.85.1, OpenCode 1.18.27, Bun 1.3.14, Node, Git, Bash, `fd`, and ripgrep. It currently targets `linux/amd64`. The build pins its Node base digest and validates Bun's download checksum.
-
-From a source checkout, invoke the development launcher `./scripts/dev-launcher`, not `src/cli.ts` from an untrusted workspace. The launcher selects Bun from trusted fixed locations rather than the caller's PATH (or an explicitly trusted absolute `PI_POD_BUN_PATH`), disables automatic `.env` loading, and restores the caller directory before interpreting a workspace path. If Podman or Git is installed outside standard system locations, provide an explicitly trusted absolute `PI_POD_TRUSTED_PATH`; caller PATH entries are never inherited. For a linked/installed package, use `pi-pod`. A local Bun consumer can use `bun add /path/to/pi-pod` with Bun 1.3.14 or later.
-
-A Linux x64 release bundle contains a compiled host controller and its adjacent audited `container/Containerfile`; it does not contain the agent image and does not require Bun:
-
-```sh
+bun run build:release -- --target linux-x64
+cd dist/pi-pod-linux-x64
 sha256sum --check SHA256SUMS
 ./pi-pod build
-./pi-pod --help
 ```
 
-Release bundles still require native Linux, rootless Podman, and cgroup v2. They are not supported on macOS or Windows. Source checkout, package, and release entrypoints are documented in [development.md](docs/development.md).
+`build:release` compiles the CLI; `./pi-pod build` builds the Podman image containing both agents and common development tools. Keep the executable alongside its bundled `container/` directory. Run the examples below from the bundle directory, replacing `/path/to/your-project` with your project directory. See [installation](docs/installation.md) for details.
 
-## Start here
+### 2. Start an interactive session
+
+Already signed in to Codex through Pi or OpenCode on your host? `dev` uses that agent's selected credential in a private session; it never writes it back to your host agent.
 
 ```sh
-# Interactive development: direct writable folder.
-./scripts/dev-launcher dev .
-./scripts/dev-launcher dev . --agent opencode
+# Pi (the default agent)
+./pi-pod dev /path/to/your-project
 
-# Headless work: a clean local-HEAD clone, retained for review.
-./scripts/dev-launcher run . --prompt "Fix the failing unit tests"
-
-# Explicit task API key; values stay in the Podman client environment, not argv.
-./scripts/dev-launcher run . --auth none --env ANTHROPIC_API_KEY --prompt "Summarize the repository"
+# Or OpenCode
+./pi-pod dev /path/to/your-project --agent opencode
 ```
 
-`dev` defaults to `bind` and `run` defaults to `clone`. A bind workspace can be dirty and is never removed, reset, committed, or copied by pi-pod. Clone mode requires a clean normal Git repository and includes local committed (even unpushed) `HEAD`, but not uncommitted, ignored, or untracked files. Every clone that reaches agent startup is retained under `$XDG_STATE_HOME/pi-pod/runs/<run-id>/workspace`; review it, then remove it explicitly:
+**Edits happen directly in your project.** It can have uncommitted changes. For other credentials, use a [pi-pod profile or an explicit API key](docs/authentication.md#choose-authentication).
+
+### 3. Hand off a task in a separate clone
+
+Headless tasks use their own authentication. Create a pi-pod profile, then run a task against a **clean Git repository**:
 
 ```sh
-./scripts/dev-launcher remove <run-id>
+./pi-pod login --agent pi --provider openai-codex --profile worker
+./pi-pod run /path/to/your-project --auth worker --prompt "Fix the failing unit tests"
 ```
 
-The removal command refuses while the exact run container or preparation reservation remains.
-
-## Credentials: development and autonomous work
-
-Interactive `dev` defaults to `--auth host`. Pi stages only the `openai-codex` credential from `~/.pi/agent/auth.json`; OpenCode stages only the `openai` credential from `$XDG_DATA_HOME/opencode/auth.json` (or the standard home fallback). Each session receives a fresh private stage, so concurrent host-auth dev sessions are supported. Staging is private, no host agent directory is mounted, and pi-pod never writes the staged credential back.
-
-Interactive Pi dev also loads trusted Pi extensions by default: the direct `~/.pi/agent/extensions` directory and package roots declared under `~/.pi/agent/extensions` or `~/.pi/agent/packages` in host settings are mounted read-only, and pi-pod generates filtered settings containing only package declarations and Pi model defaults. It does not mount general settings, sessions, skills, themes, analytics, credentials, or remote package sources. Pass `-- --no-extensions` to Pi to disable them.
-
-Headless `run` and library-autonomous use never read host Pi/OpenCode credentials, settings, extensions, sessions, skills, analytics, or shell configuration. `run` rejects `--auth host` before workspace, state, or Podman side effects. It uses the pi-pod-owned `default` profile unless `--auth none` is explicit.
+Complete the login flow and exit Pi with `/quit` before running the task. Prefer an API key? With `ANTHROPIC_API_KEY` already set in your shell:
 
 ```sh
-./scripts/dev-launcher login --agent pi --provider openai-codex --profile worker
-./scripts/dev-launcher login --agent opencode --provider <provider-id> --profile worker
+./pi-pod run /path/to/your-project --auth none --env ANTHROPIC_API_KEY --prompt "Summarize the repository"
 ```
 
-Profiles persist only selected native provider credentials below `$XDG_STATE_HOME/pi-pod/auth/` (or `~/.local/state/pi-pod/auth/`). One container uses a profile at a time. For recovery of a private interrupted stage, use the named command only after its diagnostic confirms that the recorded container is gone:
+The clone includes local committed `HEAD`, even unpushed commits, but not uncommitted, ignored, or untracked files. Tasks default to a **10-minute timeout**. When the task ends, pi-pod prints the retained clone's path and run ID. Review the result there; pi-pod does not copy changes back, commit, push, or open a PR for you. Remove the clone when you're done:
 
 ```sh
-./scripts/dev-launcher auth recover --agent pi --profile worker
-./scripts/dev-launcher auth discard --agent pi --profile worker
-./scripts/dev-launcher auth unlock --agent pi --profile worker
+./pi-pod remove <run-id>
 ```
 
-## Container boundary
+See the [usage guide](docs/usage.md) for OpenCode tasks, prompt files, dependencies, workspace choices, and all options.
 
-Each run uses rootless Podman with keep-id mapping, dropped capabilities, `no-new-privileges`, a read-only image root, default seccomp/SELinux separation, private namespaces, and memory/CPU/process/storage monitoring. Writable locations are `/workspace`, bounded `/tmp`, and bounded container home. There is no Podman socket, host networking, published port, proxy forwarding, SSH agent, host home, parent-project mount, or arbitrary Podman-option escape hatch.
+## The boundary, in brief
 
-This is containment, not a sealed vault: a bind mount lets an agent modify visible project files (including `.env` files), repository code can read any credential supplied to it, `pasta` is not an egress allowlist, storage monitoring is not a hard quota, and containers share the host kernel.
+Agents run with a read-only image, dropped capabilities, and CPU, memory, process, and storage controls. They get no host home, SSH agent, or Podman socket. Interactive Pi can load [selected read-only host extensions](docs/agents.md#interactive-pi-extensions); headless work never imports host agent credentials or resources.
 
-## Documentation
+The project you expose is writable, including any `.env` files in it. Repository code can read credentials you supply. Outbound networking is enabled by default, storage monitoring is not a hard quota, and containers share the host kernel. Read the [security guarantees and limits](docs/security.md) for the full boundary.
 
-The root README is an entry point; maintained details live in [docs/](docs/README.md):
+## Go further
 
-- [Usage, options, and troubleshooting](docs/usage.md)
-- [Pi/OpenCode support matrix](docs/agents.md)
-- [Authentication, recovery, and lifecycle outcomes](docs/authentication.md)
-- [Model preference configuration (D1) and deferred resource selections](docs/configuration.md)
-- [Architecture and lifecycle ownership](docs/architecture.md)
-- [Library API](docs/library.md)
-- [Development guide](docs/development.md)
-- [Security guarantees and limits](docs/security.md)
-
-## Required manual OAuth validation for autonomous profiles
-
-This cannot run in CI and must never expose a token. After building the image, use a disposable empty directory and named profile:
-
-1. Run `./scripts/dev-launcher login --agent pi --provider openai-codex --profile v01-check` and complete Pi's device-code flow. Exit with `/quit`.
-2. In a fresh process, run `./scripts/dev-launcher run /path/to/empty-dir --workspace bind --auth v01-check --prompt "Reply only: AUTH_OK" --timeout 60`; confirm it does not ask to log in again.
-3. Repeat after provider refresh/expiry timing permits.
-4. For every intended OpenCode subscription provider, repeat with `--agent opencode --provider <provider-id>`.
-
-Record only provider name, command exit status, and whether reuse/refresh succeeded. Do not inspect, print, or copy tokens, device codes, or redirect URLs.
-
-## Test
-
-```sh
-bun test
-bun run typecheck
-git diff --check
-```
-
-The normal suite uses temporary Git/auth fixtures and does not access provider accounts, personal configuration, real repositories, or forge credentials. Podman/systemd integration tests are opt-in; see [development.md](docs/development.md).
+| I want to…                             | Read                                                                                                             |
+| -------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Install or troubleshoot my setup       | [Installation](docs/installation.md) · [Troubleshooting](docs/usage.md#troubleshooting)                          |
+| Choose an agent, model, or credentials | [Agents](docs/agents.md) · [Model preferences](docs/configuration.md) · [Authentication](docs/authentication.md) |
+| Integrate pi-pod into my own tools     | [Library API](docs/library.md)                                                                                   |
+| Understand or contribute to pi-pod     | [Architecture](docs/architecture.md) · [Development and tests](docs/development.md)                              |
 
 ## License
 

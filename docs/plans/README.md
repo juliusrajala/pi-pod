@@ -1,6 +1,6 @@
 # Plans
 
-This directory contains outstanding work, not the current product manual. Use the [maintained documentation](../docs/README.md) for supported behavior and commands.
+This directory contains outstanding work, not the current product manual. Use the [maintained documentation](../README.md) for supported behavior and commands.
 
 ## Current work
 
@@ -12,7 +12,7 @@ This directory contains outstanding work, not the current product manual. Use th
 | [07 — Host-auth development concurrency](07-host-auth-dev-concurrency.md)             | Verification/closeout              | Prove and document concurrent source-only host-auth staging for interactive development.                           |
 | [08 — Host-platform abstraction and macOS](08-host-platform-abstraction-and-macos.md) | Planned                            | Extract Linux host policy, then validate a fail-closed local Podman Machine contract before enabling macOS.        |
 
-The [Plan 04 JSON example](04-agent-configuration.example.json) illustrates the full resource-selection design. It includes unsupported fields and is **not** a ready-to-use configuration. Working examples are linked from [configuration documentation](../docs/configuration.md).
+The [Plan 04 JSON example](04-agent-configuration.example.json) illustrates the full resource-selection design. It includes unsupported fields and is **not** a ready-to-use configuration. Working examples are linked from [configuration documentation](../configuration.md).
 
 ## Archived decisions
 
@@ -20,9 +20,9 @@ Completed or superseded plans are kept under `archive/` for rationale and securi
 
 - [01 — Initial wrapper design](archive/01-agent-container-wrapper.md).
 - [02 — Earlier readability and autonomous validation](archive/02-readability-and-autonomous-validation.md).
-- [04 — Original architecture/configuration design](archive/04-readability-and-autonomous-validation.md). Its outstanding work is summarized in active Plan 04; its intermediate layout is superseded by Plan 05.
+- [04 — Original architecture/configuration design](archive/04-readability-agent-configuration-and-documentation.md). Its outstanding work is summarized in active Plan 04; its intermediate layout is superseded by Plan 05.
 - [06 — Compiled CLI and platform distribution](archive/06-compiled-cli-distribution.md). Linux x64 release bundle support is implemented; arm64 and hosted release channels remain deferred.
 
-The [adversarial review](../reviews/01-adversarial-review.md) remains intact. Archiving a plan does not mean all historical security limits or manual validation requirements have disappeared. Current guarantees and limitations belong in [security documentation](../docs/security.md); provider-specific manual validation belongs in [authentication documentation](../docs/authentication.md).
+The [adversarial review](../reviews/01-adversarial-review.md) remains intact. Archiving a plan does not mean all historical security limits or manual validation requirements have disappeared. Current guarantees and limitations belong in [security documentation](../security.md); provider-specific manual validation belongs in [authentication documentation](../authentication.md).
 
 When work completes, update maintained documentation and this index, then archive the implementation plan. Keep unresolved decisions visible without making readers search completed task lists. Preserve plan numbering and do not describe in-progress code as reviewed or released.

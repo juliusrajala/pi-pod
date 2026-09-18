@@ -1,5 +1,7 @@
 # Development
 
+For installation and your first session, start with [installation](installation.md) and [usage](usage.md). This guide covers contributing, testing, and producing release bundles.
+
 ## Runtime and commands
 
 This checkout pins Bun 1.3.14 in `.mise.toml`.
@@ -13,7 +15,29 @@ mise exec -- ./scripts/dev-launcher build
 git diff --check
 ```
 
-If Mise is unavailable in a pi-pod worker, first verify `bun --version` matches the pin, then use that Bun directly. Use Bun, not Node, npm, pnpm, or yarn. Format intentionally with `bun run format`; `bun run format:check` never rewrites files. Prettier is development-only; no hooks or editor settings are installed. Invoke the source CLI through `./scripts/dev-launcher`; do not execute `src/cli.ts` from an untrusted workspace. The launcher does not inherit caller PATH entries; use explicit absolute `PI_POD_BUN_PATH` or `PI_POD_TRUSTED_PATH` only for trusted installations.
+If Mise is unavailable in a pi-pod worker, first verify `bun --version` matches the pin, then use that Bun directly. Use Bun, not Node, npm, pnpm, or yarn. Format intentionally with `bun run format`; `bun run format:check` never rewrites files. Prettier is development-only; no hooks or editor settings are installed.
+
+## Source launcher
+
+For everyday use, build the [compiled CLI](installation.md). While changing pi-pod itself, use `scripts/dev-launcher` to run the TypeScript source without recompiling:
+
+```sh
+mise exec -- ./scripts/dev-launcher --help
+mise exec -- ./scripts/dev-launcher dev /path/to/your-project
+```
+
+The usage guides show `./pi-pod`; substitute the path to `scripts/dev-launcher` when testing source changes. From a target project directory, invoke `/path/to/pi-pod/scripts/dev-launcher dev .`.
+
+Do not execute `src/cli.ts` from an untrusted workspace. The launcher selects Bun from trusted fixed locations rather than the caller's PATH, starts from the trusted package directory, disables automatic `.env` and workspace-controlled Bun configuration loading, and restores the caller directory before interpreting workspace paths.
+
+For nonstandard installations, set these variables only to explicitly trusted absolute paths:
+
+| Variable              | Purpose                                                             |
+| --------------------- | ------------------------------------------------------------------- |
+| `PI_POD_BUN_PATH`     | The Bun executable to use (1.3.14 or later).                        |
+| `PI_POD_TRUSTED_PATH` | A trusted tool directory, for example one containing Podman or Git. |
+
+Caller PATH entries are never inherited implicitly. Linked/local Bun packages use this same launcher. See [architecture](architecture.md#host-startup-paths) for the startup boundary.
 
 ## Release bundle
 
@@ -28,6 +52,8 @@ The bundle contains `pi-pod`, the audited `container/Containerfile` and locked i
 
 Do not build or advertise macOS, Windows, or Linux arm64 artifacts. Arm64 needs a separately validated image, Bun asset, and Podman smoke test.
 
+## Integration and provider validation
+
 Opt-in integration tests require the relevant local Podman/user-systemd setup:
 
 ```sh
@@ -36,6 +62,8 @@ PI_POD_SYSTEMD_INTEGRATION=1 mise exec -- bun test src/cli/delegation.integratio
 ```
 
 Tests use temporary fake credentials and fixtures. Never make personal configuration, OAuth, paid model requests, or provider tokens a normal dependency.
+
+The normal suite does not access provider accounts, personal configuration, real repositories, or forge credentials. Real OAuth login/reuse/refresh remains a separate, required [user-assisted validation procedure](authentication.md#required-manual-oauth-validation-for-autonomous-profiles) for autonomous profiles.
 
 ## Source map and reading order
 

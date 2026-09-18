@@ -1,6 +1,8 @@
-# Configuration
+# Model preferences
 
-## Supported model preferences (D1)
+Set your preferred model and thinking level or variant once, or override them per session with [native agent flags](usage.md#options-and-passthrough).
+
+## Supported preferences
 
 pi-pod supports a bounded JSON preference file for model selection and one verified agent-native behavior preference. It is not an auth profile, native-settings passthrough, resource catalog, or Podman policy.
 
@@ -37,4 +39,4 @@ For each field, precedence is: built-in default, then Pi's current interactive f
 
 ## Not supported yet
 
-The complete [design example](https://github.com/juliusrajala/pi-pod/blob/main/plans/04-agent-configuration.example.json) includes `resources` arrays. They are deliberately rejected in D1, including empty arrays: trusted local resource-catalog resolution and exact mounts are D2 review work. Existing interactive Pi host extension behavior is unchanged; `--no-config` does not disable it. No configuration file can contain credentials, environment forwarding, arbitrary host paths, commands, plugins/resources, Podman options, mounts, privileged mode, disabled hardening, or analysis settings.
+The complete [design example](plans/04-agent-configuration.example.json) includes `resources` arrays. They are deliberately rejected in the current model-preferences implementation (plan phase D1), including empty arrays: trusted local resource-catalog resolution and exact mounts are future D2 review work. Existing [interactive Pi host extension behavior](agents.md#interactive-pi-extensions) is unchanged; `--no-config` does not disable it. No configuration file can contain credentials, environment forwarding, arbitrary host paths, commands, plugins/resources, Podman options, mounts, privileged mode, disabled hardening, or analysis settings.

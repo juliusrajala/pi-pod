@@ -1,6 +1,6 @@
 # Supported agents
 
-The shared image, not a host-installed executable, determines the agent version. `--image` may select a compatible image, but pi-pod never pulls, builds, or discovers one automatically.
+Pi is the default; pass `--agent opencode` to select OpenCode. The [shared image](installation.md#agent-image), not a host-installed executable, determines the agent version. `--image` may select a compatible image, but pi-pod never pulls, builds, or discovers one automatically.
 
 | Agent    | Image version | `dev` | `run` | Interactive host auth        | Wrapper profile                                                 | Explicit API key    | Native discovery controls                                                                                                                                                                                                               |
 | -------- | ------------- | ----- | ----- | ---------------------------- | --------------------------------------------------------------- | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -9,18 +9,30 @@ The shared image, not a host-installed executable, determines the agent version.
 
 ## Supported preferences
 
-D1 supports model selection in a common `{ "provider", "id" }` envelope for either agent and Pi `thinking` / OpenCode `variant` in the selected `dev` or explicit `run` section. Both agents' pinned CLI help was verified: Pi supports `--provider`, `--model`, and thinking `off|minimal|low|medium|high|xhigh|max`; OpenCode supports `--model provider/model` and provider-native `--variant`. Resource arrays are not supported until D2 and are rejected rather than silently ignored. See [configuration.md](configuration.md).
+Model preferences support a common `{ "provider", "id" }` envelope for either agent and Pi `thinking` / OpenCode `variant` in the selected `dev` or explicit `run` section. Both agents' pinned CLI help was verified: Pi supports `--provider`, `--model`, and thinking `off|minimal|low|medium|high|xhigh|max`; OpenCode supports `--model provider/model` and provider-native `--variant`. Resource arrays are not yet supported and are rejected rather than silently ignored. See [model preferences](configuration.md).
 
 ## Authentication identifiers
 
 Pi's `openai-codex` and OpenCode's `openai` identifiers are agent-native and not interchangeable. A profile belongs to one agent and provider. `login` invokes the agent-native flow:
 
 ```sh
-./scripts/dev-launcher login --agent pi --provider openai-codex --profile worker
-./scripts/dev-launcher login --agent opencode --provider <provider-id> --profile worker
+./pi-pod login --agent pi --provider openai-codex --profile worker
+./pi-pod login --agent opencode --provider <provider-id> --profile worker
 ```
 
 A host credential is an interactive-development convenience, not a general source. Pi reads only `~/.pi/agent/auth.json`'s selected `openai-codex` value; OpenCode reads only `$XDG_DATA_HOME/opencode/auth.json` (with the standard home fallback)'s selected `openai` value. Each interactive session gets a fresh private stage, so concurrent host-auth dev sessions are supported. Neither host directory is mounted or copied back. `run` rejects `--auth host` before state, workspace, or Podman side effects.
+
+## Interactive Pi extensions
+
+Interactive Pi `dev` loads trusted host Pi extensions by default. The direct `~/.pi/agent/extensions` directory and package roots declared under `~/.pi/agent/extensions` or `~/.pi/agent/packages` in host settings are mounted read-only. pi-pod generates filtered settings containing only package declarations and Pi model defaults.
+
+It does not mount general settings, sessions, skills, themes, analytics, credentials, or remote package sources through this resource path. Credentials are staged separately as described above. To disable extension loading, pass Pi's native flag:
+
+```sh
+./pi-pod dev /path/to/your-project -- --no-extensions
+```
+
+`--no-config` only skips the pi-pod model preference file; it does not disable these extensions. Headless Pi never loads these host resources. OpenCode does not import host settings, plugins, sessions, or configuration.
 
 ## Known limits
 

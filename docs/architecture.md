@@ -2,7 +2,9 @@
 
 ## Host startup paths
 
-Source checkouts and linked/local packages use `scripts/dev-launcher`. It starts the pinned Bun runtime from the trusted package root, disables source-launcher autoloading, then restores the caller cwd and HOME before command routing. Linux x64 release bundles use their compiled `pi-pod` executable directly; the compiled entrypoint preserves the caller context and uses its own absolute executable path for delegated user scopes. Its build flags explicitly disable Bun dotenv, bunfig, tsconfig, and package.json autoloading.
+Everyday use goes through the compiled `pi-pod` executable in a Linux x64 bundle. The compiled entrypoint preserves the caller context and uses its own absolute executable path for delegated user scopes. Its build flags explicitly disable Bun dotenv, bunfig, tsconfig, and package.json autoloading.
+
+Contributor source runs and linked/local packages use `scripts/dev-launcher`. It starts a supported Bun runtime from the trusted package root, disables source-launcher autoloading, then restores the caller cwd and HOME before command routing. See [installation](installation.md) for compiled bundle setup and [development](development.md#source-launcher) for the source launcher.
 
 Both paths enter the same `src/cli/app.ts` command tree and domain operations. A release `build` resolves only the regular, audited `container/Containerfile` beside the executable; source mode resolves the checkout recipe. The compiled host controller does not contain the agent image or replace rootless Podman containment.
 
