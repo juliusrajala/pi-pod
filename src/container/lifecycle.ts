@@ -25,6 +25,8 @@ export type ContainerExecution = {
 export async function runPodmanContainer(input: {
   args: readonly string[];
   name: string;
+  /** Must match the per-launch ownership label before any cleanup. */
+  ownershipToken: string;
   environment: Record<string, string>;
   signal?: AbortSignal;
   output?: OutputSinks;
@@ -32,6 +34,7 @@ export async function runPodmanContainer(input: {
   onDiagnostic?: (message: string) => void;
 }): Promise<ContainerExecution> {
   input.signal?.throwIfAborted();
+  const ownershipToken = input.ownershipToken;
   const usePipes = input.output !== undefined;
   const process = Bun.spawn(["podman", ...input.args], {
     stdin: "inherit",
@@ -71,6 +74,7 @@ export async function runPodmanContainer(input: {
     abortCleanup = terminateAfterAbort({
       process,
       name: input.name,
+      ownershipToken,
       clientExited: () => clientExited,
     });
   };
@@ -95,7 +99,7 @@ export async function runPodmanContainer(input: {
       };
     }
 
-    const cleanup = await removeLeftoverContainer(input.name);
+    const cleanup = await removeLeftoverContainer(input.name, ownershipToken);
     if (!cleanup.removed)
       input.onDiagnostic?.(cleanup.error ?? `Could not verify removal of container ${input.name}.`);
     return {
@@ -110,18 +114,28 @@ export async function runPodmanContainer(input: {
 }
 
 /** Used by credential recovery before it reads a stage a container may write. */
-export async function managedContainerExists(name: string): Promise<boolean> {
+export async function managedContainerExists(
+  name: string,
+  ownershipToken: string,
+): Promise<boolean> {
   const result = await podmanCommand(["container", "exists", name]);
-  if (result === 0) return true;
   if (result === 1) return false;
-  throw new Error(
-    `Could not determine whether container ${name} exists (podman exited ${result}).`,
-  );
+  if (result !== 0) {
+    throw new Error(
+      `Could not determine whether container ${name} exists (podman exited ${result}).`,
+    );
+  }
+  const labels = await inspectContainerLabels(name);
+  if (labels["io.pi-pod.managed"] !== "true" || labels["io.pi-pod.owner"] !== ownershipToken) {
+    throw new Error(`Container ${name} exists but is not owned by this pi-pod launch.`);
+  }
+  return true;
 }
 
 async function terminateAfterAbort(input: {
   process: ReturnType<typeof Bun.spawn>;
   name: string;
+  ownershipToken: string;
   clientExited: () => boolean;
 }): Promise<ContainerCleanup> {
   try {
@@ -131,10 +145,11 @@ async function terminateAfterAbort(input: {
     input.process.kill("SIGTERM");
     const deadline = Date.now() + cleanupTimeoutMs;
     while (Date.now() < deadline) {
-      if (await managedContainerExists(input.name)) return stopAndRemove(input.name, deadline);
+      if (await managedContainerExists(input.name, input.ownershipToken))
+        return stopAndRemove(input.name, input.ownershipToken, deadline);
       if (input.clientExited()) {
         await Bun.sleep(pollIntervalMs);
-        return removeLeftoverContainer(input.name, deadline);
+        return removeLeftoverContainer(input.name, input.ownershipToken, deadline);
       }
       await Bun.sleep(pollIntervalMs);
     }
@@ -149,30 +164,41 @@ async function terminateAfterAbort(input: {
 
 async function removeLeftoverContainer(
   name: string,
+  ownershipToken: string,
   deadline = Date.now() + cleanupTimeoutMs,
 ): Promise<ContainerCleanup> {
   try {
-    if (!(await managedContainerExists(name))) return { removed: true };
-    return stopAndRemove(name, deadline);
+    if (!(await managedContainerExists(name, ownershipToken))) return { removed: true };
+    return stopAndRemove(name, ownershipToken, deadline);
   } catch (error) {
     return { removed: false, error: errorMessage(error) };
   }
 }
 
-async function stopAndRemove(name: string, deadline: number): Promise<ContainerCleanup> {
+async function stopAndRemove(
+  name: string,
+  ownershipToken: string,
+  deadline: number,
+): Promise<ContainerCleanup> {
   try {
     await podmanCommand(["stop", "--time", "5", name], deadline);
-    if (await managedContainerExists(name)) await podmanCommand(["kill", name], deadline);
-    if (await managedContainerExists(name)) await podmanCommand(["rm", "--force", name], deadline);
-    return await waitForRemoval(name, deadline);
+    if (await managedContainerExists(name, ownershipToken))
+      await podmanCommand(["kill", name], deadline);
+    if (await managedContainerExists(name, ownershipToken))
+      await podmanCommand(["rm", "--force", name], deadline);
+    return await waitForRemoval(name, ownershipToken, deadline);
   } catch (error) {
     return { removed: false, error: errorMessage(error) };
   }
 }
 
-async function waitForRemoval(name: string, deadline: number): Promise<ContainerCleanup> {
+async function waitForRemoval(
+  name: string,
+  ownershipToken: string,
+  deadline: number,
+): Promise<ContainerCleanup> {
   while (Date.now() < deadline) {
-    if (!(await managedContainerExists(name))) return { removed: true };
+    if (!(await managedContainerExists(name, ownershipToken))) return { removed: true };
     await Bun.sleep(pollIntervalMs);
   }
   return { removed: false, error: `Timed out waiting for Podman to remove container ${name}.` };
@@ -211,6 +237,45 @@ async function pipeOutput(
   destination: WritableStream<Uint8Array>,
 ): Promise<void> {
   await source.pipeTo(destination, { preventClose: true });
+}
+
+async function inspectContainerLabels(name: string): Promise<Record<string, string>> {
+  const output = await podmanCommandOutput(
+    ["container", "inspect", "--format", "{{json .Config.Labels}}", name],
+    Date.now() + commandTimeoutMs,
+  );
+  try {
+    const value: unknown = JSON.parse(output);
+    if (value === null || typeof value !== "object" || Array.isArray(value)) throw new Error();
+    const labels: Record<string, string> = {};
+    for (const [key, child] of Object.entries(value)) {
+      if (typeof child !== "string") throw new Error();
+      labels[key] = child;
+    }
+    return labels;
+  } catch {
+    throw new Error(`Could not inspect ownership labels for container ${name}.`);
+  }
+}
+
+async function podmanCommandOutput(args: readonly string[], deadline: number): Promise<string> {
+  const remainingMs = deadline - Date.now();
+  if (remainingMs <= 0) throw new Error(`Timed out before podman ${args[0]} could run.`);
+  const process = Bun.spawn(["podman", ...args], {
+    stdout: "pipe",
+    stderr: "ignore",
+    env: hostToolEnvironment(),
+  });
+  const result = await Promise.race([
+    process.exited,
+    Bun.sleep(Math.min(remainingMs, commandTimeoutMs)).then(() => undefined),
+  ]);
+  if (result === undefined) {
+    process.kill("SIGKILL");
+    throw new Error(`Timed out running podman ${args[0]}.`);
+  }
+  if (result !== 0) throw new Error(`Podman ${args[0]} failed (exit ${result}).`);
+  return new Response(process.stdout).text();
 }
 
 function errorMessage(error: unknown): string {

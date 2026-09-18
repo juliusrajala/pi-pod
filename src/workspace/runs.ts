@@ -13,6 +13,7 @@ import { isInside, validIdentifier } from "../state/identifiers.ts";
 
 export type RunReservation = {
   containerName: string;
+  ownershipToken: string;
   pid: number;
   startedAt: string;
 };
@@ -69,11 +70,18 @@ export async function removeRun(runId: string): Promise<void> {
 }
 
 /** Mark a clone as retained once its associated container is verified absent. */
-export async function releaseRunReservation(runId: string, containerName: string): Promise<void> {
+export async function releaseRunReservation(
+  runId: string,
+  containerName: string,
+  ownershipToken: string,
+): Promise<void> {
   const root = await runsDirectory();
   const runDirectory = join(root, validIdentifier(runId, "Run ID"));
   const metadata = await assertRetainedRunMetadata(runDirectory, runId);
-  if (metadata.reservation?.containerName !== containerName) {
+  if (
+    metadata.reservation?.containerName !== containerName ||
+    metadata.reservation.ownershipToken !== ownershipToken
+  ) {
     throw new Error(`Run "${runId}" is not reserved by container ${containerName}.`);
   }
   const { reservation: _reservation, ...retained } = metadata;
@@ -81,24 +89,34 @@ export async function releaseRunReservation(runId: string, containerName: string
 }
 
 /** Cleanup a clone only if its exact launch reservation never acquired a container. */
-export async function discardUnlaunchedRun(runId: string, containerName: string): Promise<void> {
+export async function discardUnlaunchedRun(
+  runId: string,
+  containerName: string,
+  ownershipToken: string,
+): Promise<void> {
   const root = await runsDirectory();
   const runDirectory = join(root, validIdentifier(runId, "Run ID"));
   const metadata = await assertRetainedRunMetadata(runDirectory, runId);
-  if (metadata.reservation?.containerName !== containerName) {
+  if (
+    metadata.reservation?.containerName !== containerName ||
+    metadata.reservation.ownershipToken !== ownershipToken
+  ) {
     throw new Error(`Run "${runId}" is not reserved by container ${containerName}.`);
   }
-  if (await managedContainerExists(containerName)) {
+  if (await managedContainerExists(containerName, ownershipToken)) {
     throw new Error(
       `Run "${runId}" has container ${containerName}; refusing unlaunched-run cleanup.`,
     );
   }
   await removeOwnedDirectory(root, runId, async (quarantine) => {
     const moved = await assertRetainedRunMetadata(quarantine, runId);
-    if (moved.reservation?.containerName !== containerName) {
+    if (
+      moved.reservation?.containerName !== containerName ||
+      moved.reservation.ownershipToken !== ownershipToken
+    ) {
       throw new Error(`Run "${runId}" reservation changed during unlaunched-run cleanup.`);
     }
-    if (await managedContainerExists(containerName)) {
+    if (await managedContainerExists(containerName, ownershipToken)) {
       throw new Error(
         `Run "${runId}" has container ${containerName}; refusing unlaunched-run cleanup.`,
       );
@@ -152,7 +170,7 @@ async function assertRunReservationInactive(metadata: RunMetadata, runId: string
       `Run "${runId}" is still being prepared by process ${reservation.pid}; refusing to remove its workspace.`,
     );
   }
-  if (await managedContainerExists(reservation.containerName)) {
+  if (await managedContainerExists(reservation.containerName, reservation.ownershipToken)) {
     throw new Error(
       `Run "${runId}" is still mounted by container ${reservation.containerName}; stop it before removing its workspace.`,
     );
@@ -164,6 +182,7 @@ function validRunReservation(value: unknown): value is RunReservation | undefine
   if (
     !isRecord(value) ||
     typeof value.containerName !== "string" ||
+    typeof value.ownershipToken !== "string" ||
     typeof value.pid !== "number" ||
     !Number.isInteger(value.pid) ||
     value.pid <= 0 ||
@@ -172,6 +191,7 @@ function validRunReservation(value: unknown): value is RunReservation | undefine
     return false;
   try {
     validIdentifier(value.containerName, "Container name");
+    validIdentifier(value.ownershipToken, "Container ownership token");
     return true;
   } catch {
     return false;

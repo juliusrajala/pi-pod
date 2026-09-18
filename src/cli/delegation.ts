@@ -38,6 +38,7 @@ export function delegatedScopeArgs(launcher: string, argv: readonly string[]): s
       "XDG_CACHE_HOME",
       "TERM",
       "COLORTERM",
+      "PI_POD_TRUSTED_PATH",
     ].flatMap((name) => (Bun.env[name] === undefined ? [] : [`${name}=${Bun.env[name]}`])),
   ];
   return [

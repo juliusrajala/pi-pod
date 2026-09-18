@@ -23,7 +23,9 @@ case "$1" in
     touch ${shellQuote(container)}
     while test -e ${shellQuote(container)}; do sleep 0.01; done
     ;;
-  container) test -e ${shellQuote(container)} ;;
+  container)
+    if test "$2" = exists; then test -e ${shellQuote(container)}; else printf '%s\\n' '{"io.pi-pod.managed":"true","io.pi-pod.owner":"fixture-owner"}'; fi
+    ;;
   stop|kill|rm) rm -f ${shellQuote(container)} ;;
 esac
 `,
@@ -37,6 +39,7 @@ esac
     const result = await runPodmanContainer({
       args: ["run", "--name", "fixture"],
       name: "fixture",
+      ownershipToken: "fixture-owner",
       environment: { PATH: Bun.env.PATH },
       signal: controller.signal,
     });
@@ -67,7 +70,9 @@ test("removes a container left behind after the attached client exits", async ()
 printf '%s\\n' "$1" >> ${shellQuote(trace)}
 case "$1" in
   run) touch ${shellQuote(container)} ;;
-  container) test -e ${shellQuote(container)} ;;
+  container)
+    if test "$2" = exists; then test -e ${shellQuote(container)}; else printf '%s\\n' '{"io.pi-pod.managed":"true","io.pi-pod.owner":"fixture-owner"}'; fi
+    ;;
   stop|kill|rm) rm -f ${shellQuote(container)} ;;
 esac
 `,
@@ -78,6 +83,7 @@ esac
     const result = await runPodmanContainer({
       args: ["run", "--name", "fixture"],
       name: "fixture",
+      ownershipToken: "fixture-owner",
       environment: { PATH: Bun.env.PATH },
     });
 
@@ -88,6 +94,46 @@ esac
   } finally {
     if (originalPath === undefined) delete Bun.env.PATH;
     else Bun.env.PATH = originalPath;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("does not remove a same-name container with mismatched ownership labels", async () => {
+  const root = await mkdtemp(join(tmpdir(), "pi-pod-lifecycle-owner-"));
+  const bin = join(root, "bin");
+  const container = join(root, "container-exists");
+  const removed = join(root, "removed");
+  await mkdir(bin);
+  await writeFile(
+    join(bin, "podman"),
+    `#!/bin/sh
+case "$1" in
+  run) touch ${shellQuote(container)} ;;
+  container)
+    if test "$2" = exists; then test -e ${shellQuote(container)}; else printf '%s\\n' '{"io.pi-pod.managed":"true","io.pi-pod.owner":"other-owner"}'; fi
+    ;;
+  stop|kill|rm) touch ${shellQuote(removed)}; rm -f ${shellQuote(container)} ;;
+esac
+`,
+    { mode: 0o700 },
+  );
+  const previousPath = Bun.env.PATH;
+  Bun.env.PATH = `${bin}:${previousPath ?? ""}`;
+  try {
+    const result = await runPodmanContainer({
+      args: ["run", "--name", "fixture"],
+      name: "fixture",
+      ownershipToken: "fixture-owner",
+      environment: { PATH: Bun.env.PATH },
+    });
+
+    expect(result.cleanup.removed).toBe(false);
+    expect(result.cleanup.error).toContain("not owned");
+    expect(await Bun.file(removed).exists()).toBe(false);
+    expect(await Bun.file(container).exists()).toBe(true);
+  } finally {
+    if (previousPath === undefined) delete Bun.env.PATH;
+    else Bun.env.PATH = previousPath;
     await rm(root, { recursive: true, force: true });
   }
 });
@@ -114,6 +160,7 @@ esac
     const result = await runPodmanContainer({
       args: ["run"],
       name: "fixture",
+      ownershipToken: "fixture-owner",
       environment: { PATH: Bun.env.PATH },
       output: {
         stdout: new WritableStream({
@@ -159,6 +206,7 @@ esac
     const result = await runPodmanContainer({
       args: ["run"],
       name: "fixture",
+      ownershipToken: "fixture-owner",
       environment: { PATH: Bun.env.PATH },
       output: {
         stdout: new WritableStream({

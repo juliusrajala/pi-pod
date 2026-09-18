@@ -1,6 +1,7 @@
 import { lstat, realpath, rm, stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
+import { isInside } from "../../state/identifiers.ts";
 import {
   ensurePrivateStateDirectory,
   privateStateDirectory,
@@ -31,6 +32,32 @@ export async function hostPiExtensionsDirectory(): Promise<string | undefined> {
   return realpath(path);
 }
 
+async function writeSettingsFile(
+  settings: { packages: LocalExtensionPackage[]; modelDefaults: Record<string, string> },
+  settingsFile: string,
+) {
+  const packageConfig = settings.packages.map((entry) => ({
+    source: entry.destination,
+    extensions: entry.extensions,
+    skills: [],
+    prompts: [],
+    themes: [],
+  }));
+
+  const settingsContent = settings.packages.length === 0 ? {} : { packages: packageConfig };
+
+  const settingsFileContent = JSON.stringify(
+    {
+      ...settings.modelDefaults,
+      ...settingsContent,
+    },
+    null,
+    2,
+  );
+
+  return await writePrivateFile(settingsFile, settingsFileContent);
+}
+
 /**
  * Stage a filtered Pi settings file containing only local extension packages.
  * The packages themselves remain read-only host mounts; general settings,
@@ -47,6 +74,14 @@ export async function stageHostPiExtensionPackages(): Promise<DevResourceStage |
   if (settings.packages.length === 0 && Object.keys(settings.modelDefaults).length === 0)
     return undefined;
 
+  const mounts = (
+    await Promise.all(
+      settings.packages.map(async (entry) => ({
+        ...entry,
+        source: await restrictPackageSource(entry.source, hostPiAgentDirectory()),
+      })),
+    )
+  ).map(({ source, destination }) => ({ source, destination }));
   const directory = join(
     await privateStateDirectory(),
     "dev-resource-staging",
@@ -54,31 +89,13 @@ export async function stageHostPiExtensionPackages(): Promise<DevResourceStage |
   );
   await ensurePrivateStateDirectory(directory);
   const settingsFile = join(directory, "settings.json");
-  await writePrivateFile(
-    settingsFile,
-    `${JSON.stringify(
-      {
-        ...settings.modelDefaults,
-        ...(settings.packages.length === 0
-          ? {}
-          : {
-              packages: settings.packages.map((entry) => ({
-                source: entry.destination,
-                extensions: entry.extensions,
-                skills: [],
-                prompts: [],
-                themes: [],
-              })),
-            }),
-      },
-      null,
-      2,
-    )}\n`,
-  );
+
+  await writeSettingsFile(settings, settingsFile);
+
   let cleaned = false;
   return {
     settingsFile,
-    mounts: settings.packages.map(({ source, destination }) => ({ source, destination })),
+    mounts,
     cleanup: async () => {
       if (cleaned) return;
       cleaned = true;
@@ -150,8 +167,27 @@ export async function assertDevResourceSource(path: string): Promise<void> {
   }
 }
 
+async function restrictPackageSource(source: string, baseDirectory: string): Promise<string> {
+  const roots = await Promise.all(
+    [join(baseDirectory, "extensions"), join(baseDirectory, "packages")].map((path) =>
+      realpath(path).catch(() => undefined),
+    ),
+  );
+  const canonicalSource = await realpath(source);
+  if (!roots.some((root) => root !== undefined && isInside(root, canonicalSource))) {
+    throw new Error(
+      `Host Pi package ${source} is outside the allowed extension roots (${join(baseDirectory, "extensions")} and ${join(baseDirectory, "packages")}).`,
+    );
+  }
+  return canonicalSource;
+}
+
 function hostPiAgentDirectory(): string {
-  return join(Bun.env.HOME?.trim() || homedir(), ".pi", "agent");
+  const configured = Bun.env.HOME?.trim();
+  if (configured !== undefined && configured !== "" && !isAbsolute(configured)) {
+    throw new Error("HOME must be an absolute path for Pi development resources.");
+  }
+  return join(configured || homedir(), ".pi", "agent");
 }
 
 function stringArray(value: unknown, label: string): string[] {

@@ -82,7 +82,10 @@ test("does not remove a dead wrapper's clone while its recorded container exists
   const fakeBin = join(root, "bin");
   await mkdir(run, { recursive: true });
   await mkdir(fakeBin);
-  await writeFile(join(fakeBin, "podman"), "#!/bin/sh\nexit 0\n");
+  await writeFile(
+    join(fakeBin, "podman"),
+    '#!/bin/sh\nif test "$2" = inspect; then printf \'%s\\n\' \'{"io.pi-pod.managed":"true","io.pi-pod.owner":"orphan-token"}\'; else exit 0; fi\n',
+  );
   await chmod(join(fakeBin, "podman"), 0o755);
   await writeFile(
     join(run, "run.json"),
@@ -91,6 +94,7 @@ test("does not remove a dead wrapper's clone while its recorded container exists
       id: "orphan",
       reservation: {
         containerName: "pi-pod-orphan",
+        ownershipToken: "orphan-token",
         pid: 999_999_999,
         startedAt: new Date().toISOString(),
       },
@@ -142,6 +146,7 @@ test("does not remove a clone while its wrapper reservation is active", async ()
     mode: "clone",
     runId: "reserved",
     containerName: "pi-pod-reserved",
+    ownershipToken: "reserved-token",
   });
   const sentinel = join(workspace.path, "uncommitted-agent-work");
   await writeFile(sentinel, "keep this while startup is in progress\n");
@@ -149,7 +154,7 @@ test("does not remove a clone while its wrapper reservation is active", async ()
   await expect(removeRun("reserved")).rejects.toThrow("still being prepared");
   expect(await Bun.file(sentinel).text()).toBe("keep this while startup is in progress\n");
 
-  await releaseRunReservation("reserved", "pi-pod-reserved");
+  await releaseRunReservation("reserved", "pi-pod-reserved", "reserved-token");
   await removeRun("reserved");
   expect(await Bun.file(workspace.path).exists()).toBe(false);
 });

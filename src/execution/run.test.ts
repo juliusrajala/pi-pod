@@ -477,6 +477,7 @@ test("reconciles a profile only after a leftover exact named container is remove
     const container = join(root, "container-exists");
     const containerName = join(root, "container-name");
     const stageAuth = join(root, "stage-auth");
+    const ownerToken = join(root, "owner-token");
     await mkdir(workspace);
     const profile = await createAuthProfile({
       agent: "pi",
@@ -492,6 +493,7 @@ case "$1" in
     shift
     while test "$#" -gt 0; do
       if test "$1" = --name; then printf '%s' "$2" > ${JSON.stringify(containerName)}; shift 2; continue; fi
+      case "$1" in io.pi-pod.owner=*) printf '%s' "\${1#io.pi-pod.owner=}" > ${JSON.stringify(ownerToken)}; shift; continue ;; esac
       if test "$1" = --mount; then
         case "$2" in
           *dst=/home/agent/.pi/agent*) stage=\${2#type=bind,src=}; stage=\${stage%,dst=*}; printf '%s' "$stage/auth.json" > ${JSON.stringify(stageAuth)} ;;
@@ -504,7 +506,11 @@ case "$1" in
     touch ${JSON.stringify(container)}
     ;;
   container)
-    test "$3" = "$(cat ${JSON.stringify(containerName)})" && test -e ${JSON.stringify(container)} && test -f "$(cat ${JSON.stringify(stageAuth)})"
+    if test "$2" = inspect; then
+      printf '{"io.pi-pod.managed":"true","io.pi-pod.owner":"%s"}' "$(cat ${JSON.stringify(ownerToken)})"
+    else
+      test "$3" = "$(cat ${JSON.stringify(containerName)})" && test -e ${JSON.stringify(container)} && test -f "$(cat ${JSON.stringify(stageAuth)})"
+    fi
     ;;
   stop|kill|rm) rm -f ${JSON.stringify(container)} ;;
 esac
@@ -540,6 +546,7 @@ test("preserves a profile stage through cancellation until its exact container i
     const container = join(root, "container-exists");
     const containerName = join(root, "container-name");
     const stageAuth = join(root, "stage-auth");
+    const ownerToken = join(root, "owner-token");
     await mkdir(workspace);
     const profile = await createAuthProfile({
       agent: "pi",
@@ -555,6 +562,7 @@ case "$1" in
     shift
     while test "$#" -gt 0; do
       if test "$1" = --name; then printf '%s' "$2" > ${JSON.stringify(containerName)}; shift 2; continue; fi
+      case "$1" in io.pi-pod.owner=*) printf '%s' "\${1#io.pi-pod.owner=}" > ${JSON.stringify(ownerToken)}; shift; continue ;; esac
       if test "$1" = --mount; then
         case "$2" in
           *dst=/home/agent/.pi/agent*) stage=\${2#type=bind,src=}; stage=\${stage%,dst=*}; printf '%s' "$stage/auth.json" > ${JSON.stringify(stageAuth)} ;;
@@ -570,7 +578,11 @@ case "$1" in
     while :; do :; done
     ;;
   container)
-    test "$3" = "$(cat ${JSON.stringify(containerName)})" && test -e ${JSON.stringify(container)} && test -f "$(cat ${JSON.stringify(stageAuth)})"
+    if test "$2" = inspect; then
+      printf '{"io.pi-pod.managed":"true","io.pi-pod.owner":"%s"}' "$(cat ${JSON.stringify(ownerToken)})"
+    else
+      test "$3" = "$(cat ${JSON.stringify(containerName)})" && test -e ${JSON.stringify(container)} && test -f "$(cat ${JSON.stringify(stageAuth)})"
+    fi
     ;;
   stop|kill|rm) rm -f ${JSON.stringify(container)} ;;
 esac
@@ -611,6 +623,7 @@ test("reconciles a timed-out profile only after its exact container is removed",
     const container = join(root, "container-exists");
     const containerName = join(root, "container-name");
     const stageAuth = join(root, "stage-auth");
+    const ownerToken = join(root, "owner-token");
     await mkdir(workspace);
     const profile = await createAuthProfile({
       agent: "pi",
@@ -626,6 +639,7 @@ case "$1" in
     shift
     while test "$#" -gt 0; do
       if test "$1" = --name; then printf '%s' "$2" > ${JSON.stringify(containerName)}; shift 2; continue; fi
+      case "$1" in io.pi-pod.owner=*) printf '%s' "\${1#io.pi-pod.owner=}" > ${JSON.stringify(ownerToken)}; shift; continue ;; esac
       if test "$1" = --mount; then
         case "$2" in
           *dst=/home/agent/.pi/agent*) stage=\${2#type=bind,src=}; stage=\${stage%,dst=*}; printf '%s' "$stage/auth.json" > ${JSON.stringify(stageAuth)} ;;
@@ -640,7 +654,11 @@ case "$1" in
     while :; do :; done
     ;;
   container)
-    test "$3" = "$(cat ${JSON.stringify(containerName)})" && test -e ${JSON.stringify(container)} && test -f "$(cat ${JSON.stringify(stageAuth)})"
+    if test "$2" = inspect; then
+      printf '{"io.pi-pod.managed":"true","io.pi-pod.owner":"%s"}' "$(cat ${JSON.stringify(ownerToken)})"
+    else
+      test "$3" = "$(cat ${JSON.stringify(containerName)})" && test -e ${JSON.stringify(container)} && test -f "$(cat ${JSON.stringify(stageAuth)})"
+    fi
     ;;
   stop|kill|rm) rm -f ${JSON.stringify(container)} ;;
 esac

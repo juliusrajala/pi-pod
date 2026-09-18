@@ -22,6 +22,14 @@ Invoke a source checkout through `./scripts/dev-launcher`, not `src/cli.ts` from
 
 `remove` refuses while the exact run container or its preparation reservation exists. It never removes a bind workspace.
 
+## Workspace dependencies and toolchains
+
+pi-pod does not select a package manager or install project dependencies. The shared image includes Bun and Node/npm, but it does not promise Yarn, pnpm, Corepack, language-specific build tools, or a project's full toolchain. Use an audited compatible `--image` when the project needs additional tools.
+
+A bind workspace exposes its existing files, including `node_modules`, to the container. Those dependencies are not guaranteed to run in the image: native modules and generated binaries must match the Linux container architecture. A clone contains only committed source, so ignored or untracked dependencies are absent and must be installed in the retained clone. Such installation can modify a bind workspace, consumes its workspace/storage budget, and requires network access unless dependencies are already available in the image or workspace.
+
+pi-pod does not mount host package caches, package-manager configuration, or private-registry credentials. `--network none` therefore prevents a fresh dependency install. macOS is not currently supported; a future Podman Machine implementation must treat macOS-built dependencies as incompatible with its Linux guest until verified and reinstalled there.
+
 ## Options and passthrough
 
 ```text

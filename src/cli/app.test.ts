@@ -1,34 +1,90 @@
 import { expect, test } from "bun:test";
-import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { parseArgs, resolveCommand } from "@crustjs/core";
 import { app, normalizeConfigOptOut } from "./app.ts";
 import { isWrapperHelpRequest } from "./help.ts";
 
-function trustedBunPath(): string {
-  return `${dirname(process.execPath)}:${process.env.PATH}`;
+function packageRoot(): string {
+  return resolve(import.meta.dir, "..", "..");
 }
 
 function sourceLauncher(): string {
-  return resolve(import.meta.dir, "..", "..", "scripts", "dev-launcher");
+  return join(packageRoot(), "scripts", "dev-launcher");
 }
 
-test("launcher does not load a caller workspace Bun preload", async () => {
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+test("launcher starts without loading caller Bun config or creating runtime home", async () => {
   const root = await mkdtemp(join(tmpdir(), "pi-pod-cli-"));
   try {
-    const marker = join(root, "host-preload-ran");
+    const home = join(root, "home");
+    const workspaceMarker = join(root, "workspace-preload-ran");
+    const homeMarker = join(root, "home-preload-ran");
+    await mkdir(home);
     await writeFile(join(root, "bunfig.toml"), 'preload = ["./preload.ts"]\n');
     await writeFile(
       join(root, "preload.ts"),
-      `await Bun.write(${JSON.stringify(marker)}, "ran");\n`,
+      `await Bun.write(${JSON.stringify(workspaceMarker)}, "ran");\n`,
+    );
+    await writeFile(
+      join(home, ".bunfig.toml"),
+      `preload = [${JSON.stringify(join(home, "home-preload.ts"))}]\n`,
+    );
+    await writeFile(
+      join(home, "home-preload.ts"),
+      `await Bun.write(${JSON.stringify(homeMarker)}, "ran");\n`,
     );
 
     const child = Bun.spawn([sourceLauncher(), "--help"], {
       cwd: root,
       stdout: "pipe",
       stderr: "pipe",
-      env: { ...process.env, PATH: trustedBunPath() },
+      env: { ...process.env, HOME: home, PI_POD_BUN_PATH: process.execPath },
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+      child.exited,
+    ]);
+
+    expect(exitCode, stderr).toBe(0);
+    expect(stdout).toStartWith("Usage:");
+    expect(await Bun.file(workspaceMarker).exists()).toBe(false);
+    expect(await Bun.file(homeMarker).exists()).toBe(false);
+    expect(await pathExists(join(packageRoot(), ".runtime-home"))).toBe(false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("launcher ignores a caller PATH Bun from the workspace", async () => {
+  const root = await mkdtemp(join(tmpdir(), "pi-pod-cli-hostile-path-"));
+  try {
+    const bin = join(root, "bin");
+    const marker = join(root, "path-bun-ran");
+    await mkdir(bin);
+    await writeFile(join(bin, "bun"), `#!/bin/sh\ntouch ${JSON.stringify(marker)}\nexit 99\n`, {
+      mode: 0o700,
+    });
+
+    const child = Bun.spawn([sourceLauncher(), "--help"], {
+      cwd: root,
+      stdout: "pipe",
+      stderr: "pipe",
+      env: {
+        ...process.env,
+        PATH: `${bin}:${process.env.PATH ?? ""}`,
+        PI_POD_BUN_PATH: process.execPath,
+      },
     });
     const [stdout, stderr, exitCode] = await Promise.all([
       new Response(child.stdout).text(),
@@ -41,6 +97,58 @@ test("launcher does not load a caller workspace Bun preload", async () => {
     expect(await Bun.file(marker).exists()).toBe(false);
   } finally {
     await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("launcher skips a stale BUN_INSTALL Bun for a valid Mise shim", async () => {
+  const root = await mkdtemp(join(tmpdir(), "pi-pod-cli-mise-bun-"));
+  const staleRoot = await mkdtemp(join(tmpdir(), "pi-pod-cli-stale-bun-"));
+  const miseRoot = await mkdtemp(join(tmpdir(), "pi-pod-cli-mise-root-"));
+  try {
+    const staleBin = join(staleRoot, "bin");
+    const miseShims = join(miseRoot, "shims");
+    const staleMarker = join(root, "stale-bun-probed");
+    const miseCwd = join(root, "mise-cwd");
+    await mkdir(staleBin, { recursive: true });
+    await mkdir(miseShims, { recursive: true });
+    await writeFile(
+      join(staleBin, "bun"),
+      `#!/bin/sh\n: > ${JSON.stringify(staleMarker)}\necho 1.3.9\n`,
+      { mode: 0o700 },
+    );
+    await writeFile(
+      join(miseShims, "bun"),
+      `#!/bin/sh\nprintf '%s' "$PWD" > ${JSON.stringify(miseCwd)}\nexec ${JSON.stringify(process.execPath)} "$@"\n`,
+      { mode: 0o700 },
+    );
+    const env = { ...process.env };
+    delete env.PI_POD_BUN_PATH;
+    delete env.BUN_INSTALL_BIN;
+    env.BUN_INSTALL = staleRoot;
+    env.MISE_DATA_DIR = miseRoot;
+    env.HOME = join(root, "home");
+    env.PATH = "/definitely-not-the-caller-workspace";
+
+    const child = Bun.spawn([sourceLauncher(), "--help"], {
+      cwd: root,
+      stdout: "pipe",
+      stderr: "pipe",
+      env,
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+      child.exited,
+    ]);
+
+    expect(exitCode, stderr).toBe(0);
+    expect(stdout).toStartWith("Usage:");
+    expect(await Bun.file(staleMarker).exists()).toBe(true);
+    expect(await Bun.file(miseCwd).text()).toBe(packageRoot());
+  } finally {
+    await rm(root, { recursive: true, force: true });
+    await rm(staleRoot, { recursive: true, force: true });
+    await rm(miseRoot, { recursive: true, force: true });
   }
 });
 
@@ -57,7 +165,11 @@ test("launcher rejects a Bun runtime below its pinned minimum", async () => {
       cwd: root,
       stdout: "pipe",
       stderr: "pipe",
-      env: { ...process.env, PATH: `${bin}:/usr/bin:/bin` },
+      env: {
+        ...process.env,
+        PATH: `${bin}:/usr/bin:/bin`,
+        PI_POD_BUN_PATH: bun,
+      },
     });
     const [stderr, exitCode] = await Promise.all([new Response(child.stderr).text(), child.exited]);
 
@@ -88,7 +200,12 @@ test("Crust rejects invalid input before auth, workspace, or Podman actions", as
         cwd: root,
         stdout: "pipe",
         stderr: "pipe",
-        env: { ...process.env, PATH: `${bin}:${trustedBunPath()}`, XDG_STATE_HOME: state },
+        env: {
+          ...process.env,
+          PATH: `${bin}:${process.env.PATH ?? ""}`,
+          PI_POD_BUN_PATH: process.execPath,
+          XDG_STATE_HOME: state,
+        },
       });
       const [stderr, exitCode] = await Promise.all([
         new Response(child.stderr).text(),
@@ -122,7 +239,9 @@ test("invalid CLI configuration fails before auth, workspace, or Podman", async 
       stderr: "pipe",
       env: {
         ...process.env,
-        PATH: `${bin}:${trustedBunPath()}`,
+        PATH: `${bin}:${process.env.PATH ?? ""}`,
+        PI_POD_BUN_PATH: process.execPath,
+        PI_POD_TRUSTED_PATH: bin,
         XDG_STATE_HOME: join(root, "state"),
       },
     });
@@ -192,7 +311,9 @@ esac
         stderr: "pipe",
         env: {
           ...process.env,
-          PATH: `${bin}:${trustedBunPath()}`,
+          PATH: `${bin}:${process.env.PATH ?? ""}`,
+          PI_POD_BUN_PATH: process.execPath,
+          PI_POD_TRUSTED_PATH: bin,
           XDG_STATE_HOME: join(root, "state"),
           XDG_CONFIG_HOME: join(root, "invalid"),
         },
@@ -220,7 +341,7 @@ test("dev defaults Pi to a staged host credential without mounting host Pi state
   const hostAgent = join(home, ".pi", "agent");
   const hostAuth = join(hostAgent, "auth.json");
   const hostSettings = join(hostAgent, "settings.json");
-  const hostPackage = join(root, "host-extension-package");
+  const hostPackage = join(hostAgent, "packages", "host-extension-package");
   const trace = join(root, "podman-arguments");
   const source =
     '{"openai-codex":{"type":"oauth","access":"host-access","refresh":"host-refresh","expires":1900000000000}}\n';
@@ -277,7 +398,9 @@ esac
       stderr: "pipe",
       env: {
         ...process.env,
-        PATH: `${bin}:${trustedBunPath()}`,
+        PATH: `${bin}:${process.env.PATH ?? ""}`,
+        PI_POD_BUN_PATH: process.execPath,
+        PI_POD_TRUSTED_PATH: bin,
         HOME: home,
         XDG_STATE_HOME: state,
         XDG_CONFIG_HOME: configHome,

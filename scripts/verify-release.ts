@@ -1,7 +1,11 @@
 import { createHash } from "node:crypto";
 import { lstat, readFile, realpath } from "node:fs/promises";
 import { isAbsolute, join, resolve } from "node:path";
-import { auditedContainerfileSha256 } from "../src/cli/distribution.ts";
+import {
+  auditedAgentLockSha256,
+  auditedAgentPackageJsonSha256,
+  auditedContainerfileSha256,
+} from "../src/cli/distribution.ts";
 
 const [requested] = process.argv.slice(2);
 if (requested === undefined || process.argv.slice(2).length !== 1) {
@@ -13,6 +17,8 @@ const bundle = await realpath(
 const expected = new Map([
   ["pi-pod", ""],
   ["container/Containerfile", auditedContainerfileSha256],
+  ["container/package.json", auditedAgentPackageJsonSha256],
+  ["container/bun.lock", auditedAgentLockSha256],
   ["README.md", ""],
 ]);
 const manifestPath = join(bundle, "SHA256SUMS");
@@ -22,7 +28,9 @@ const manifest = (await readFile(manifestPath, "utf8"))
   .filter((line) => line.length > 0)
   .map(parseManifestLine);
 if (manifest.length !== expected.size || manifest.some(([path]) => !expected.has(path))) {
-  throw new Error("SHA256SUMS must contain exactly the executable, Containerfile, and README.md.");
+  throw new Error(
+    "SHA256SUMS must contain exactly the executable, image recipe/dependencies, and README.md.",
+  );
 }
 for (const [relative, expectedRecipeDigest] of expected) {
   const path = join(bundle, relative);

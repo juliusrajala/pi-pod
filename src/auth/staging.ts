@@ -30,6 +30,7 @@ type StageMetadata = {
   name: string;
   provider: string;
   containerName: string | null;
+  ownershipToken: string | null;
   /** The wrapper process that owns this stage; absent on legacy stages. */
   pid?: number;
   /** Absent on existing profile stages for backwards-compatible recovery. */
@@ -51,8 +52,11 @@ export type HostAuthStage = Omit<AuthStage, "profile">;
 /** Create a mutable native-agent state directory while retaining wrapper metadata outside it. */
 export async function stageAuthProfile(
   profile: AuthProfile,
-  options: { containerName?: string } = {},
+  options: { containerName?: string; ownershipToken?: string } = {},
 ): Promise<AuthStage> {
+  if ((options.containerName === undefined) !== (options.ownershipToken === undefined)) {
+    throw new Error("Auth stage ownership requires both a container name and nonce.");
+  }
   const source = await readAuthDocument(profile.authFile);
   validateCredentialDocument(profile.agent, profile.provider, source);
   const directory = join(await privateStateDirectory(), "auth-staging", crypto.randomUUID());
@@ -69,6 +73,10 @@ export async function stageAuthProfile(
           options.containerName === undefined
             ? null
             : validIdentifier(options.containerName, "Container name"),
+        ownershipToken:
+          options.ownershipToken === undefined
+            ? null
+            : validIdentifier(options.ownershipToken, "Container ownership token"),
         pid: process.pid,
       } satisfies StageMetadata,
       null,
@@ -136,7 +144,7 @@ const hostAuthSources: Readonly<
 /** Stage only the selected reviewed host credential for an interactive source-only session. */
 export async function stageHostAuth(
   source: HostAuthStageSource,
-  options: { containerName?: string } = {},
+  options: { containerName?: string; ownershipToken?: string } = {},
 ): Promise<HostAuthStage> {
   return stageHostAuthSource({ source, ...hostAuthSources[source], ...options });
 }
@@ -148,7 +156,11 @@ async function stageHostAuthSource(input: {
   source: HostAuthStageSource;
   credential: () => Promise<string>;
   containerName?: string;
+  ownershipToken?: string;
 }): Promise<HostAuthStage> {
+  if ((input.containerName === undefined) !== (input.ownershipToken === undefined)) {
+    throw new Error("Auth stage ownership requires both a container name and nonce.");
+  }
   const source = await input.credential();
   const directory = join(await privateStateDirectory(), "auth-staging", crypto.randomUUID());
   await ensurePrivateStateDirectory(directory);
@@ -164,6 +176,10 @@ async function stageHostAuthSource(input: {
           input.containerName === undefined
             ? null
             : validIdentifier(input.containerName, "Container name"),
+        ownershipToken:
+          input.ownershipToken === undefined
+            ? null
+            : validIdentifier(input.ownershipToken, "Container ownership token"),
         pid: process.pid,
         source: input.source,
       } satisfies StageMetadata,
@@ -270,6 +286,8 @@ async function readStageMetadata(path: string): Promise<StageMetadata> {
     typeof value.name !== "string" ||
     typeof value.provider !== "string" ||
     (value.containerName !== null && typeof value.containerName !== "string") ||
+    (value.ownershipToken !== null && typeof value.ownershipToken !== "string") ||
+    (value.containerName === null) !== (value.ownershipToken === null) ||
     (value.pid !== undefined &&
       (typeof value.pid !== "number" || !Number.isInteger(value.pid) || value.pid <= 0)) ||
     (value.source !== undefined && value.source !== "host-pi" && value.source !== "host-opencode")
@@ -280,12 +298,15 @@ async function readStageMetadata(path: string): Promise<StageMetadata> {
   validProvider(value.provider);
   if (typeof value.containerName === "string")
     validIdentifier(value.containerName, "Container name");
+  if (typeof value.ownershipToken === "string")
+    validIdentifier(value.ownershipToken, "Container ownership token");
   return {
     version: profileVersion,
     agent: value.agent,
     name: value.name,
     provider: value.provider,
     containerName: value.containerName,
+    ownershipToken: value.ownershipToken,
     ...(value.pid === undefined ? {} : { pid: value.pid }),
     source:
       value.source === "host-pi" || value.source === "host-opencode" ? value.source : "profile",
@@ -296,7 +317,11 @@ async function hostStageIsActive(metadata: StageMetadata): Promise<boolean> {
   // Check the owner first: this covers the interval before Podman has created
   // the named container and avoids asking recovery to race startup.
   if (metadata.pid !== undefined && processExists(metadata.pid)) return true;
-  return metadata.containerName !== null && (await managedContainerExists(metadata.containerName));
+  return (
+    metadata.containerName !== null &&
+    metadata.ownershipToken !== null &&
+    (await managedContainerExists(metadata.containerName, metadata.ownershipToken))
+  );
 }
 
 function processExists(pid: number): boolean {
@@ -318,7 +343,11 @@ async function assertStageContainerStopped(stage: {
   metadata: StageMetadata;
 }): Promise<void> {
   const name = stage.metadata.containerName;
-  if (name !== null && (await managedContainerExists(name))) {
+  if (
+    name !== null &&
+    stage.metadata.ownershipToken !== null &&
+    (await managedContainerExists(name, stage.metadata.ownershipToken))
+  ) {
     throw new Error(
       `Credential stage ${stage.directory} is still mounted by container ${name}; stop it before recovery.`,
     );

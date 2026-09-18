@@ -4,7 +4,11 @@ import { dirname, join } from "node:path";
 
 /** Digest of the audited recipe shipped with the current host controller. */
 export const auditedContainerfileSha256 =
-  "1642b18edfa87b214c46e84dfd24c05481e984006f3a57cde2755e2b0d496ee5";
+  "d6f04d7e9339aef18c1b222702eede57de1a6da7797ee0f5d20d39264d477d03";
+export const auditedAgentPackageJsonSha256 =
+  "bc7dd07e8cddd4cb4630e4d3a74796298033d789b45203957701c03c3491d01d";
+export const auditedAgentLockSha256 =
+  "76d3e47bc3f8d2db676d986ab16e9bf887b5d239816d53018a96b95832cbd5b6";
 
 export type BuildRecipeLayout = {
   context: string;
@@ -39,6 +43,8 @@ export async function releaseBuildRecipe(
       `The release Containerfile has been altered; expected SHA-256 ${auditedContainerfileSha256}, found ${digest}. Reinstall the complete pi-pod release bundle.`,
     );
   }
+  await requireAuditedFile(join(context, "package.json"), auditedAgentPackageJsonSha256);
+  await requireAuditedFile(join(context, "bun.lock"), auditedAgentLockSha256);
   return { context, containerfile };
 }
 
@@ -49,6 +55,16 @@ async function requireDirectory(path: string, description: string): Promise<void
   } catch (error) {
     if (error instanceof Error && error.message.includes(" is not a directory:")) throw error;
     throw new Error(`Missing ${description}: ${path}`);
+  }
+}
+
+async function requireAuditedFile(path: string, expected: string): Promise<void> {
+  await requireRegularFile(path, `release dependency file`);
+  const digest = createHash("sha256")
+    .update(await readFile(path))
+    .digest("hex");
+  if (digest !== expected) {
+    throw new Error(`The release dependency file has been altered: ${path}`);
   }
 }
 

@@ -13,6 +13,7 @@ import {
 } from "./runs.ts";
 
 const maxAttributeFiles = 1_000;
+const maxAttributeEntries = 100_000;
 const maxAttributeBytes = 1024 * 1024;
 
 /** Inspect a local repository and create an independent, clean-HEAD clone. */
@@ -21,8 +22,12 @@ export async function prepareClone(input: {
   runId: string;
   signal?: AbortSignal;
   containerName?: string;
+  ownershipToken?: string;
 }): Promise<PreparedWorkspace> {
-  const { sourcePath, runId, signal, containerName } = input;
+  const { sourcePath, runId, signal, containerName, ownershipToken } = input;
+  if ((containerName === undefined) !== (ownershipToken === undefined)) {
+    throw new Error("Clone reservation requires both a container name and ownership token.");
+  }
   await assertCloneableRepository(sourcePath, signal);
   const root = await runsDirectory();
   const runDirectory = join(root, runId);
@@ -68,6 +73,7 @@ export async function prepareClone(input: {
         : {
             reservation: {
               containerName: validIdentifier(containerName, "Container name"),
+              ownershipToken: validIdentifier(ownershipToken!, "Container ownership token"),
               pid: process.pid,
               startedAt: new Date().toISOString(),
             } satisfies RunReservation,
@@ -135,10 +141,15 @@ async function assertNoFilterAttributes(root: string): Promise<void> {
 async function findAttributeFiles(root: string): Promise<string[]> {
   const directories = [root];
   const files: string[] = [];
+  let inspectedEntries = 0;
   while (directories.length > 0) {
     const directory = directories.pop();
     if (directory === undefined) continue;
     for (const entry of await readdir(directory, { withFileTypes: true })) {
+      inspectedEntries += 1;
+      if (inspectedEntries > maxAttributeEntries) {
+        throw new Error("Clone workspace has too many entries to inspect safely.");
+      }
       if (entry.name === ".git") continue;
       const path = join(directory, entry.name);
       if (entry.name === ".gitattributes") {

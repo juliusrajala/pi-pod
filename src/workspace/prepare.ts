@@ -15,6 +15,7 @@ export async function prepareWorkspace(input: {
   runId?: string;
   /** Internal lifecycle reservation; omitted by standalone workspace callers. */
   containerName?: string;
+  ownershipToken?: string;
   signal?: AbortSignal;
 }): Promise<PreparedWorkspace> {
   const sourcePath = await realDirectory(input.path, "Workspace");
@@ -29,6 +30,7 @@ export async function prepareWorkspace(input: {
     runId,
     signal: input.signal,
     containerName: input.containerName,
+    ownershipToken: input.ownershipToken,
   });
 }
 

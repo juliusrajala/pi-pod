@@ -15,14 +15,27 @@ RUN apt-get update \
   && unzip -q /tmp/bun.zip -d /tmp \
   && install -m 755 /tmp/bun-linux-x64/bun /usr/local/bin/bun \
   && ln -s /usr/bin/fdfind /usr/local/bin/fd \
-  && npm install --global --ignore-scripts "@earendil-works/pi-coding-agent@${PI_VERSION}" \
-  && npm install --global "opencode-ai@${OPENCODE_VERSION}" \
-  && mkdir -p /workspace /home/agent/.pi/agent /home/agent/.local/share/opencode \
-  && chown -R node:node /workspace /home/agent \
   && rm -rf /var/lib/apt/lists/* /tmp/bun.zip /tmp/bun-linux-x64
+
+# The lockfile contains integrity records for the complete native agent trees.
+# Install scripts stay disabled so registry packages cannot execute build-time
+# code as root; the image only exposes the reviewed package bins.
+COPY package.json bun.lock /tmp/pi-pod-agent/
+RUN cd /tmp/pi-pod-agent \
+  && test "$(bun --version)" = "${BUN_VERSION}" \
+  && grep -F "\"@earendil-works/pi-coding-agent@${PI_VERSION}\"" bun.lock \
+  && grep -F "\"opencode-ai@${OPENCODE_VERSION}\"" bun.lock \
+  && bun install --frozen-lockfile --ignore-scripts --production \
+  && mkdir -p /opt/pi-pod-agent \
+  && mv node_modules /opt/pi-pod-agent/node_modules \
+  && ln -s /opt/pi-pod-agent/node_modules/.bin/pi /usr/local/bin/pi \
+  && ln -s /opt/pi-pod-agent/node_modules/.bin/opencode /usr/local/bin/opencode \
+  && rm -rf /tmp/pi-pod-agent
 
 ENV HOME=/home/agent
 WORKDIR /workspace
+RUN mkdir -p /workspace /home/agent/.pi/agent /home/agent/.local/share/opencode \
+  && chown -R node:node /workspace /home/agent /opt/pi-pod-agent
 USER node
 
 CMD ["bash"]

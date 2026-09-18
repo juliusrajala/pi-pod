@@ -5,6 +5,8 @@ import { join } from "node:path";
 import { auditedContainerfileSha256, releaseBuildRecipe } from "./distribution.ts";
 
 const sourceContainerfile = join(import.meta.dir, "..", "..", "container", "Containerfile");
+const sourceAgentPackage = join(import.meta.dir, "..", "..", "container", "package.json");
+const sourceAgentLock = join(import.meta.dir, "..", "..", "container", "bun.lock");
 
 test("release recipe resolution is adjacent to the canonical executable", async () => {
   const root = await mkdtemp(join(tmpdir(), "pi-pod-release-layout-"));
@@ -15,6 +17,8 @@ test("release recipe resolution is adjacent to the canonical executable", async 
     await writeFile(executable, "compiled fixture");
     await chmod(executable, 0o755);
     await writeFile(recipe, await readFile(sourceContainerfile));
+    await writeFile(join(root, "container", "package.json"), await readFile(sourceAgentPackage));
+    await writeFile(join(root, "container", "bun.lock"), await readFile(sourceAgentLock));
 
     const layout = await releaseBuildRecipe(executable);
     expect(layout.context).toBe(join(root, "container"));
@@ -35,6 +39,8 @@ test("release recipe resolution rejects a symlink or altered recipe", async () =
     await expect(releaseBuildRecipe(executable)).rejects.toThrow("regular non-symlink");
     await rm(join(context, "Containerfile"));
     await writeFile(join(context, "Containerfile"), "altered");
+    await writeFile(join(context, "package.json"), await readFile(sourceAgentPackage));
+    await writeFile(join(context, "bun.lock"), await readFile(sourceAgentLock));
     await expect(releaseBuildRecipe(executable)).rejects.toThrow(auditedContainerfileSha256);
   } finally {
     await rm(root, { recursive: true, force: true });

@@ -18,6 +18,8 @@
     "config/agents/*.json",
     "scripts/dev-launcher",
     "container/Containerfile",
+    "container/package.json",
+    "container/bun.lock",
     "src/**/*.ts",
     "!src/**/*.test.ts"
   ],
@@ -35,6 +37,7 @@
     "bun": ">=1.3.14"
   },
   "bin": {
+    "pi-pod": "./scripts/dev-launcher",
     "pi-pod-dev": "./scripts/dev-launcher"
   },
   "scripts": {

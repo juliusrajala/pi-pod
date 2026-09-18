@@ -1,5 +1,5 @@
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { normalizedHostCredentialDocument } from "./credentials.ts";
 import { readBoundedText } from "../utils/fs.ts";
 
@@ -40,12 +40,21 @@ function hostPiAgentDirectory(): string {
 }
 
 function hostOpenCodeDataDirectory(): string {
-  const dataHome = Bun.env.XDG_DATA_HOME?.trim() || join(hostHomeDirectory(), ".local", "share");
+  const home = hostHomeDirectory();
+  const configured = Bun.env.XDG_DATA_HOME?.trim();
+  if (configured !== undefined && configured !== "" && !isAbsolute(configured)) {
+    throw new Error("XDG_DATA_HOME must be an absolute path for host authentication.");
+  }
+  const dataHome = configured || join(home, ".local", "share");
   return join(dataHome, "opencode");
 }
 
 function hostHomeDirectory(): string {
-  return Bun.env.HOME?.trim() || homedir();
+  const configured = Bun.env.HOME?.trim();
+  if (configured !== undefined && configured !== "" && !isAbsolute(configured)) {
+    throw new Error("HOME must be an absolute path for host authentication.");
+  }
+  return configured || homedir();
 }
 
 function isMissing(error: unknown): error is NodeJS.ErrnoException {

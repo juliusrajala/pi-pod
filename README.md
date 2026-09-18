@@ -20,7 +20,7 @@ bun install
 
 The shared `localhost/pi-pod:0.1.0` image contains Pi 0.85.1, OpenCode 1.18.27, Bun 1.3.14, Node, Git, Bash, `fd`, and ripgrep. It currently targets `linux/amd64`. The build pins its Node base digest and validates Bun's download checksum.
 
-From a source checkout, invoke the development launcher `./scripts/dev-launcher`, not `src/cli.ts` from an untrusted workspace. The launcher starts Bun from the trusted package directory, disables automatic `.env` loading, and restores the caller directory before interpreting a workspace path. For a linked/installed package, use `pi-pod`. A local Bun consumer can use `bun add /path/to/pi-pod` with Bun 1.3.14 or later.
+From a source checkout, invoke the development launcher `./scripts/dev-launcher`, not `src/cli.ts` from an untrusted workspace. The launcher selects Bun from trusted fixed locations rather than the caller's PATH (or an explicitly trusted absolute `PI_POD_BUN_PATH`), disables automatic `.env` loading, and restores the caller directory before interpreting a workspace path. If Podman or Git is installed outside standard system locations, provide an explicitly trusted absolute `PI_POD_TRUSTED_PATH`; caller PATH entries are never inherited. For a linked/installed package, use `pi-pod`. A local Bun consumer can use `bun add /path/to/pi-pod` with Bun 1.3.14 or later.
 
 A Linux x64 release bundle contains a compiled host controller and its adjacent audited `container/Containerfile`; it does not contain the agent image and does not require Bun:
 
@@ -58,7 +58,7 @@ The removal command refuses while the exact run container or preparation reserva
 
 Interactive `dev` defaults to `--auth host`. Pi stages only the `openai-codex` credential from `~/.pi/agent/auth.json`; OpenCode stages only the `openai` credential from `$XDG_DATA_HOME/opencode/auth.json` (or the standard home fallback). Each session receives a fresh private stage, so concurrent host-auth dev sessions are supported. Staging is private, no host agent directory is mounted, and pi-pod never writes the staged credential back.
 
-Interactive Pi dev also loads trusted Pi extensions by default: the direct extension directory and local package roots declared in host settings are mounted read-only, and pi-pod generates filtered settings containing only package declarations and Pi model defaults. It does not mount general settings, sessions, skills, themes, analytics, credentials, or remote package sources. Pass `-- --no-extensions` to Pi to disable them.
+Interactive Pi dev also loads trusted Pi extensions by default: the direct `~/.pi/agent/extensions` directory and package roots declared under `~/.pi/agent/extensions` or `~/.pi/agent/packages` in host settings are mounted read-only, and pi-pod generates filtered settings containing only package declarations and Pi model defaults. It does not mount general settings, sessions, skills, themes, analytics, credentials, or remote package sources. Pass `-- --no-extensions` to Pi to disable them.
 
 Headless `run` and library-autonomous use never read host Pi/OpenCode credentials, settings, extensions, sessions, skills, analytics, or shell configuration. `run` rejects `--auth host` before workspace, state, or Podman side effects. It uses the pi-pod-owned `default` profile unless `--auth none` is explicit.
 

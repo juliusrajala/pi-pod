@@ -18,14 +18,15 @@ export async function login(input: LoginOptions): Promise<LoginResult> {
   const profileName = input.profile ?? "default";
   const provider = input.provider.trim();
   const containerName = `pi-pod-login-${crypto.randomUUID().slice(0, 12)}`;
+  const ownershipToken = crypto.randomUUID();
   const profile = await createAuthProfile({ agent: input.agent, name: profileName, provider });
-  const lock = await acquireAuthProfile(profile, { containerName });
+  const lock = await acquireAuthProfile(profile, { containerName, ownershipToken });
   let stage: Awaited<ReturnType<typeof stageAuthProfile>> | undefined;
   let retainProfileLock = false;
   try {
     await recoverPendingAuthStages(profile);
     await assertPodmanAvailable();
-    stage = await stageAuthProfile(profile, { containerName });
+    stage = await stageAuthProfile(profile, { containerName, ownershipToken });
     input.onDiagnostic?.(definition.loginInstructions(provider));
     const execution = await runPodmanContainer({
       args: buildPodmanRunArgs({
@@ -36,12 +37,14 @@ export async function login(input: LoginOptions): Promise<LoginResult> {
         environment: [],
         image: input.image?.trim() || defaultImage,
         containerName,
+        ownershipToken,
         limits: defaultResourceLimits,
         network: "pasta",
         tty: true,
         command: definition.loginCommand(provider),
       }),
       name: containerName,
+      ownershipToken,
       environment: podmanEnvironment([]),
       signal: input.signal,
       output: input.output,

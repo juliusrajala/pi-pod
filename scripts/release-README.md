@@ -1,7 +1,7 @@
 # pi-pod Linux x64 release bundle
 
 This bundle contains the compiled pi-pod host controller and the audited
-Containerfile it uses for `pi-pod build`. It supports Linux x86_64 only.
+Containerfile and locked image dependency files it uses for `pi-pod build`. It supports Linux x86_64 only.
 
 Requirements: rootless Podman, cgroup v2 resource limits, and Bun is **not**
 required. Build the pinned agent image before the first agent run:

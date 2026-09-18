@@ -10,6 +10,7 @@ type LockOwner = {
   pid: number;
   startedAt: string;
   containerName: string | null;
+  ownershipToken: string | null;
 };
 
 export type ProfileLock = {
@@ -19,8 +20,19 @@ export type ProfileLock = {
 /** Serialize access to a profile which can be refreshed by only one agent. */
 export async function acquireAuthProfile(
   profile: AuthProfile,
-  options: { containerName?: string } = {},
+  options: { containerName?: string; ownershipToken?: string } = {},
 ): Promise<ProfileLock> {
+  const containerName =
+    options.containerName === undefined
+      ? null
+      : validIdentifier(options.containerName, "Container name");
+  const ownershipToken =
+    options.ownershipToken === undefined
+      ? null
+      : validIdentifier(options.ownershipToken, "Container ownership token");
+  if ((containerName === null) !== (ownershipToken === null)) {
+    throw new Error("Auth lock ownership requires both a container name and nonce.");
+  }
   const lockPath = join(profile.directory, ".active");
   try {
     await mkdir(lockPath, { mode: 0o700 });
@@ -32,10 +44,6 @@ export async function acquireAuthProfile(
     }
     throw error;
   }
-  const containerName =
-    options.containerName === undefined
-      ? null
-      : validIdentifier(options.containerName, "Container name");
   await writePrivateFile(
     join(lockPath, "owner.json"),
     `${JSON.stringify({
@@ -43,6 +51,7 @@ export async function acquireAuthProfile(
       pid: process.pid,
       startedAt: new Date().toISOString(),
       containerName,
+      ownershipToken,
     } satisfies LockOwner)}\n`,
   );
   return {
@@ -66,7 +75,11 @@ export async function removeAuthProfileLock(profile: AuthProfile): Promise<void>
       `Auth profile "${profile.name}" may still be used by process ${owner.pid}; refusing to unlock it.`,
     );
   }
-  if (owner.containerName !== null && (await managedContainerExists(owner.containerName))) {
+  if (
+    owner.containerName !== null &&
+    owner.ownershipToken !== null &&
+    (await managedContainerExists(owner.containerName, owner.ownershipToken))
+  ) {
     throw new Error(
       `Auth profile "${profile.name}" is still mounted by container ${owner.containerName}; stop it before unlocking.`,
     );
@@ -84,17 +97,22 @@ async function readLockOwner(path: string): Promise<LockOwner | undefined> {
       !Number.isInteger(value.pid) ||
       value.pid <= 0 ||
       typeof value.startedAt !== "string" ||
-      (value.containerName !== null && typeof value.containerName !== "string")
+      (value.containerName !== null && typeof value.containerName !== "string") ||
+      (value.ownershipToken !== null && typeof value.ownershipToken !== "string") ||
+      (value.containerName === null) !== (value.ownershipToken === null)
     ) {
       return undefined;
     }
     if (typeof value.containerName === "string")
       validIdentifier(value.containerName, "Container name");
+    if (typeof value.ownershipToken === "string")
+      validIdentifier(value.ownershipToken, "Container ownership token");
     return {
       version: profileVersion,
       pid: value.pid,
       startedAt: value.startedAt,
       containerName: value.containerName,
+      ownershipToken: value.ownershipToken,
     };
   } catch {
     return undefined;

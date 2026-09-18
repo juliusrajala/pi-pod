@@ -27,8 +27,8 @@ afterEach(async () => {
 
 test("stages only local host extension packages in filtered Pi settings", async () => {
   const agent = join(Bun.env.HOME!, ".pi", "agent");
-  const packageRoot = join(root, "extensions-package");
-  await mkdir(packageRoot);
+  const packageRoot = join(agent, "packages", "extensions-package");
+  await mkdir(packageRoot, { recursive: true });
   await writeFile(
     join(agent, "settings.json"),
     JSON.stringify({
@@ -61,6 +61,17 @@ test("stages only local host extension packages in filtered Pi settings", async 
     ],
   });
   await stage!.cleanup();
+});
+
+test("rejects host extension packages outside explicit roots", async () => {
+  const agent = join(Bun.env.HOME!, ".pi", "agent");
+  const packageRoot = join(root, "outside-package");
+  await mkdir(packageRoot);
+  await writeFile(join(agent, "settings.json"), JSON.stringify({ packages: [packageRoot] }));
+
+  await expect(stageHostPiExtensionPackages()).rejects.toThrow(
+    "outside the allowed extension roots",
+  );
 });
 
 test("rejects non-local host extension packages instead of installing them in dev", async () => {

@@ -120,8 +120,14 @@ test("allows concurrent host stages and preserves the live owner's startup stage
       }),
     );
 
-    const first = await stageHostAuth("host-pi", { containerName: "pi-pod-first" });
-    const second = await stageHostAuth("host-pi", { containerName: "pi-pod-second" });
+    const first = await stageHostAuth("host-pi", {
+      containerName: "pi-pod-first",
+      ownershipToken: "first-token",
+    });
+    const second = await stageHostAuth("host-pi", {
+      containerName: "pi-pod-second",
+      ownershipToken: "second-token",
+    });
     try {
       expect(first.directory).not.toBe(second.directory);
       expect(first.agentStateDirectory).not.toBe(second.agentStateDirectory);
@@ -163,7 +169,10 @@ test("skips an active host stage and removes a proven orphan", async () => {
         },
       }),
     );
-    const active = await stageHostAuth("host-pi", { containerName: "pi-pod-active" });
+    const active = await stageHostAuth("host-pi", {
+      containerName: "pi-pod-active",
+      ownershipToken: "active-token",
+    });
     const orphan = await stageHostAuth("host-pi");
     try {
       const deadPid = 2_147_483_647;
@@ -175,6 +184,7 @@ test("skips an active host stage and removes a proven orphan", async () => {
           name: "host-pi",
           provider: "openai-codex",
           containerName: "pi-pod-active",
+          ownershipToken: "active-token",
           pid: deadPid,
           source: "host-pi",
         }),
@@ -187,12 +197,13 @@ test("skips an active host stage and removes a proven orphan", async () => {
           name: "host-pi",
           provider: "openai-codex",
           containerName: null,
+          ownershipToken: null,
           pid: deadPid,
           source: "host-pi",
         }),
       );
 
-      await withExistingContainer("pi-pod-active", async () => {
+      await withExistingContainer("pi-pod-active", "active-token", async () => {
         await recoverHostAuthStages("host-pi");
       });
       expect((await lstat(active.directory)).isDirectory()).toBe(true);
@@ -409,14 +420,15 @@ test("does not recover a stage while its named container still exists", async ()
     provider: "openai-codex",
   });
   const containerName = "pi-pod-stage-fixture";
-  const lock = await acquireAuthProfile(profile, { containerName });
+  const ownershipToken = "stage-token";
+  const lock = await acquireAuthProfile(profile, { containerName, ownershipToken });
   try {
-    await stageAuthProfile(profile, { containerName });
+    await stageAuthProfile(profile, { containerName, ownershipToken });
   } finally {
     await lock.release();
   }
 
-  await withExistingContainer(containerName, async () => {
+  await withExistingContainer(containerName, ownershipToken, async () => {
     await expect(recoverAuthProfile("pi", "default")).rejects.toThrow("still mounted by container");
   });
   // The fake only reports this exact name as present. Recovery must retain the
@@ -432,7 +444,8 @@ test("does not unlock a dead PID while its named container still exists", async 
     provider: "openai-codex",
   });
   const containerName = "pi-pod-auth-fixture";
-  const lock = await acquireAuthProfile(profile, { containerName });
+  const ownershipToken = "auth-token";
+  const lock = await acquireAuthProfile(profile, { containerName, ownershipToken });
   try {
     await writeFile(
       join(profile.directory, ".active", "owner.json"),
@@ -441,9 +454,10 @@ test("does not unlock a dead PID while its named container still exists", async 
         pid: 2_147_483_647,
         startedAt: new Date().toISOString(),
         containerName,
+        ownershipToken,
       }),
     );
-    await withExistingContainer(containerName, async () => {
+    await withExistingContainer(containerName, ownershipToken, async () => {
       await expect(removeAuthProfileLock("pi", "default")).rejects.toThrow(
         "still mounted by container",
       );
@@ -453,7 +467,11 @@ test("does not unlock a dead PID while its named container still exists", async 
   }
 });
 
-async function withExistingContainer(name: string, action: () => Promise<void>): Promise<void> {
+async function withExistingContainer(
+  name: string,
+  ownershipToken: string,
+  action: () => Promise<void>,
+): Promise<void> {
   const bin = join(stateRoot, "bin");
   const previousPath = Bun.env.PATH;
   await mkdir(bin);
@@ -461,6 +479,10 @@ async function withExistingContainer(name: string, action: () => Promise<void>):
     join(bin, "podman"),
     `#!/bin/sh
 if test "$1" = container && test "$2" = exists && test "$3" = "${name}"; then exit 0; fi
+if test "$1" = container && test "$2" = inspect; then
+  printf '%s\\n' '{"io.pi-pod.managed":"true","io.pi-pod.owner":"${ownershipToken}"}'
+  exit 0
+fi
 exit 1
 `,
     { mode: 0o700 },

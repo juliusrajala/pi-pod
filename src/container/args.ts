@@ -55,6 +55,8 @@ export type PodmanLaunchOptions = {
   environment: readonly string[];
   image: string;
   containerName: string;
+  /** Per-launch nonce used to prove ownership before cleanup/recovery. */
+  ownershipToken?: string;
   limits: ResourceLimits;
   network: "pasta" | "none";
   tty: boolean;
@@ -115,6 +117,9 @@ export function buildPodmanRunArgs(options: PodmanLaunchOptions): string[] {
     options.containerName,
     "--label",
     "io.pi-pod.managed=true",
+    ...(options.ownershipToken === undefined
+      ? []
+      : ["--label", `io.pi-pod.owner=${options.ownershipToken}`]),
     ...(options.runId === undefined ? [] : ["--label", `io.pi-pod.run-id=${options.runId}`]),
     "--userns=keep-id",
     "--user",

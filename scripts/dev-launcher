@@ -1,33 +1,139 @@
 #!/bin/sh
 # Run Bun from the installed package, not the caller's repository. Bun loads a
 # cwd bunfig.toml before TypeScript starts; the CLI restores the caller cwd in
-# src/cli.ts before it interprets any user path.
+# src/cli.ts before it interprets a workspace path.
 set -eu
 
 required_bun_version=1.3.14
-actual_bun_version=$(bun --version)
-if ! awk -v actual="$actual_bun_version" -v required="$required_bun_version" 'BEGIN {
-  split(actual, a, /[.-]/); split(required, b, /[.-]/);
-  for (i = 1; i <= 3; i += 1) {
-    if ((a[i] + 0) > (b[i] + 0)) exit 0;
-    if ((a[i] + 0) < (b[i] + 0)) exit 1;
+
+# Resolve the trusted package root before probing Bun. In particular, a Mise
+# shim must resolve its configuration from this root, never from the caller's
+# workspace.
+script_path=$(/usr/bin/readlink -f -- "$0")
+package_root=$(CDPATH='' cd -- "${script_path%/*}/.." && /bin/pwd -P)
+caller_cwd=$(/bin/pwd -P)
+
+version_at_least() {
+  actual=$1
+  case "$actual" in
+    ""|*[!0-9.]*|.*|*..*|*.) return 1 ;;
+  esac
+  old_ifs=$IFS
+  IFS=.
+  set -- $actual
+  IFS=$old_ifs
+  [ "${1:-0}" -gt 1 ] && return 0
+  [ "${1:-0}" -lt 1 ] && return 1
+  [ "${2:-0}" -gt 3 ] && return 0
+  [ "${2:-0}" -lt 3 ] && return 1
+  [ "${3:-0}" -ge 14 ]
+}
+
+candidate_is_allowed() {
+  candidate=$1
+  case "$candidate" in
+    /*) ;;
+    *) return 1 ;;
+  esac
+  case "$candidate" in
+    "$caller_cwd"|"$caller_cwd"/*)
+      case "$candidate" in
+        "$package_root"|"$package_root"/*) ;;
+        *) return 1 ;;
+      esac
+      ;;
+  esac
+  return 0
+}
+
+probe_bun_version() {
+  candidate=$1
+  case "$candidate" in
+    /*) ;;
+    *) return 1 ;;
+  esac
+  [ -x "$candidate" ] && [ ! -d "$candidate" ] || return 1
+  # Run from the trusted package root so a Mise shim cannot select a caller
+  # workspace's .mise.toml or Bun installation.
+  actual=$(CDPATH='' cd -- "$package_root" && "$candidate" --version 2>/dev/null) || return 1
+  printf '%s' "$actual"
+}
+
+bun_path=
+if [ "${PI_POD_BUN_PATH+x}" = x ]; then
+  explicit_bun=$PI_POD_BUN_PATH
+  case "$explicit_bun" in
+    /*) ;;
+    *)
+      printf '%s\n' "PI_POD_BUN_PATH must be an absolute executable Bun path." >&2
+      exit 1
+      ;;
+  esac
+  if [ ! -x "$explicit_bun" ] || [ -d "$explicit_bun" ]; then
+    printf '%s\n' "PI_POD_BUN_PATH must be an absolute executable Bun path." >&2
+    exit 1
+  fi
+  if ! explicit_version=$(probe_bun_version "$explicit_bun"); then
+    printf '%s\n' "Could not execute Bun at PI_POD_BUN_PATH: $explicit_bun." >&2
+    exit 1
+  fi
+  if ! version_at_least "$explicit_version"; then
+    printf '%s\n' "pi-pod requires Bun $required_bun_version or later; found $explicit_version." >&2
+    exit 1
+  fi
+  bun_path=$explicit_bun
+else
+  try_fallback_bun() {
+    candidate=$1
+    [ -n "$candidate" ] || return 1
+    candidate=$(/usr/bin/readlink -f -- "$candidate" 2>/dev/null) || return 1
+    candidate_is_allowed "$candidate" || return 1
+    actual=$(probe_bun_version "$candidate") || return 1
+    version_at_least "$actual" || return 1
+    bun_path=$candidate
+    return 0
   }
-  exit 0;
-}' </dev/null; then
-  printf '%s\n' "pi-pod requires Bun $required_bun_version or later; found $actual_bun_version." >&2
-  exit 1
+
+  # User-managed installations are checked before system locations. A stale
+  # BUN_INSTALL Bun is skipped rather than preventing a valid Mise shim.
+  try_fallback_bun "${BUN_INSTALL_BIN-}/bun" || true
+  if [ -z "$bun_path" ]; then try_fallback_bun "${BUN_INSTALL-}/bin/bun" || true; fi
+  if [ -z "$bun_path" ]; then try_fallback_bun "${MISE_DATA_DIR-}/shims/bun" || true; fi
+  if [ -z "$bun_path" ]; then try_fallback_bun "${HOME-}/.local/share/mise/shims/bun" || true; fi
+  if [ -z "$bun_path" ]; then try_fallback_bun "${HOME-}/.bun/bin/bun" || true; fi
+  if [ -z "$bun_path" ]; then try_fallback_bun /usr/local/bin/bun || true; fi
+  if [ -z "$bun_path" ]; then try_fallback_bun /usr/bin/bun || true; fi
+  if [ -z "$bun_path" ]; then
+    printf '%s\n' "pi-pod could not find Bun $required_bun_version or later; set PI_POD_BUN_PATH to an absolute trusted Bun path." >&2
+    exit 1
+  fi
 fi
 
-script_path=$(readlink -f -- "$0")
-package_root=$(CDPATH='' cd -- "$(dirname -- "$script_path")/.." && pwd -P)
-caller_cwd=$(pwd -P)
+# Keep all subsequent helper lookups away from the caller's PATH. A custom
+# Podman/Git directory must be explicitly trusted and absolute; it is not
+# inherited implicitly from the target workspace.
+trusted_tool_path=${PI_POD_TRUSTED_PATH-}
+if [ -n "$trusted_tool_path" ]; then
+  case "$trusted_tool_path" in
+    /*) ;;
+    *)
+      printf '%s\n' "PI_POD_TRUSTED_PATH must be an absolute path." >&2
+      exit 1
+      ;;
+  esac
+fi
+export PATH="${bun_path%/*}${trusted_tool_path:+:$trusted_tool_path}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 host_home=${HOME-}
 
 # A caller-controlled global bunfig.toml is not a CLI configuration source.
-# The application restores HOME before it reads pi-pod state or starts Podman.
-export HOME="$package_root/.runtime-home"
+# Use an unusable synthetic HOME only until Bun finishes startup. The
+# application restores HOME before it reads pi-pod state or starts Podman.
+export HOME=/dev/null
 export PI_POD_CALLER_CWD="$caller_cwd"
 export PI_POD_HOST_HOME="$host_home"
 export PI_POD_LAUNCHER="$script_path"
 
-exec bun --cwd "$package_root" --no-env-file "$package_root/src/cli.ts" "$@"
+# Keep the shim's own startup cwd trusted too; the application restores the
+# original caller cwd after Bun has finished loading.
+CDPATH='' cd -- "$package_root"
+exec "$bun_path" --cwd "$package_root" --no-env-file "$package_root/src/cli.ts" "$@"

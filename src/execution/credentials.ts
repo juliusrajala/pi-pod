@@ -50,6 +50,7 @@ export async function stageCredentialSource(input: {
   source: CredentialSource;
   profileName?: string;
   containerName: string;
+  ownershipToken: string;
   /** Register immediately so failed stage recovery still releases the lock. */
   onProfileLock?: (release: () => Promise<void>) => void;
 }): Promise<{
@@ -69,16 +70,25 @@ export async function stageCredentialSource(input: {
     }
     await recoverHostAuthStages(hostAuth.source);
     return {
-      stage: await stageHostAuth(hostAuth.source, { containerName: input.containerName }),
+      stage: await stageHostAuth(hostAuth.source, {
+        containerName: input.containerName,
+        ownershipToken: input.ownershipToken,
+      }),
       outcome: { source: "host", reconciliation: "not-used", lock: "not-used" },
     };
   }
   const profile = await loadAuthProfile(input.agent, input.profileName!);
-  const lock = await acquireAuthProfile(profile, { containerName: input.containerName });
+  const lock = await acquireAuthProfile(profile, {
+    containerName: input.containerName,
+    ownershipToken: input.ownershipToken,
+  });
   input.onProfileLock?.(lock.release);
   await recoverPendingAuthStages(profile);
   return {
-    stage: await stageAuthProfile(profile, { containerName: input.containerName }),
+    stage: await stageAuthProfile(profile, {
+      containerName: input.containerName,
+      ownershipToken: input.ownershipToken,
+    }),
     release: lock.release,
     outcome: { source: "profile", reconciliation: "retained", lock: "retained" },
   };

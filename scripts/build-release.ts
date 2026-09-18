@@ -63,6 +63,11 @@ async function buildRelease(argv: readonly string[]): Promise<void> {
       join(root, "container", "Containerfile"),
       join(output, "container", "Containerfile"),
     );
+    await copyFile(
+      join(root, "container", "package.json"),
+      join(output, "container", "package.json"),
+    );
+    await copyFile(join(root, "container", "bun.lock"), join(output, "container", "bun.lock"));
     const recipeDigest = createHash("sha256")
       .update(await readFile(join(output, "container", "Containerfile")))
       .digest("hex");
@@ -79,7 +84,13 @@ async function buildRelease(argv: readonly string[]): Promise<void> {
 }
 
 async function writeChecksums(bundle: string): Promise<void> {
-  const entries = ["pi-pod", "container/Containerfile", "README.md"];
+  const entries = [
+    "pi-pod",
+    "container/Containerfile",
+    "container/package.json",
+    "container/bun.lock",
+    "README.md",
+  ];
   const lines: string[] = [];
   for (const relative of entries) {
     const digest = createHash("sha256")

@@ -12,14 +12,21 @@ import {
 } from "node:fs/promises";
 import { constants } from "node:fs";
 import { homedir } from "node:os";
-import { basename, dirname, join, relative, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { isInside, validIdentifier } from "../state/identifiers.ts";
 
 const MAX_JSON_BYTES = 1024 * 1024;
 
 export function stateDirectory(): string {
   const xdgState = Bun.env.XDG_STATE_HOME?.trim();
-  return join(xdgState || join(Bun.env.HOME?.trim() || homedir(), ".local", "state"), "pi-pod");
+  if (xdgState !== undefined && xdgState !== "" && !isAbsolute(xdgState)) {
+    throw new Error("XDG_STATE_HOME must be an absolute path.");
+  }
+  const home = Bun.env.HOME?.trim();
+  if (home !== undefined && home !== "" && !isAbsolute(home)) {
+    throw new Error("HOME must be an absolute path for pi-pod state.");
+  }
+  return join(xdgState || join(home || homedir(), ".local", "state"), "pi-pod");
 }
 
 /** Resolve existing parent symlinks without creating the missing leaf. */

@@ -4,12 +4,13 @@ This directory contains outstanding work, not the current product manual. Use th
 
 ## Current work
 
-| Plan                                                                                | Status                             | Remaining scope                                                                                                    |
-| ----------------------------------------------------------------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| [03 — Analysis traces and delivery](03-analysis-trace-delivery.md)                  | Deferred proposal; not implemented | Capture/privacy policy, durable opt-in traces, host-only delivery.                                                 |
-| [04 — Agent configuration](04-readability-agent-configuration-and-documentation.md) | Partially implemented              | D2 resource catalog/selection, an explicitly selected third-agent spike, and host-stage concurrency investigation. |
-| [05 — Domain layout and navigation](05-domain-layout-and-navigation.md)             | Implementation in progress         | Complete domain migration, uniform formatting, colocated tests, navigation docs, and review.                       |
-| [07 — Host-auth development concurrency](07-host-auth-dev-concurrency.md)           | Verification/closeout              | Prove and document concurrent source-only host-auth staging for interactive development.                           |
+| Plan                                                                                  | Status                             | Remaining scope                                                                                                    |
+| ------------------------------------------------------------------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| [03 — Analysis traces and delivery](03-analysis-trace-delivery.md)                    | Deferred proposal; not implemented | Capture/privacy policy, durable opt-in traces, host-only delivery.                                                 |
+| [04 — Agent configuration](04-readability-agent-configuration-and-documentation.md)   | Partially implemented              | D2 resource catalog/selection, an explicitly selected third-agent spike, and host-stage concurrency investigation. |
+| [05 — Domain layout and navigation](05-domain-layout-and-navigation.md)               | Implementation in progress         | Complete domain migration, uniform formatting, colocated tests, navigation docs, and review.                       |
+| [07 — Host-auth development concurrency](07-host-auth-dev-concurrency.md)             | Verification/closeout              | Prove and document concurrent source-only host-auth staging for interactive development.                           |
+| [08 — Host-platform abstraction and macOS](08-host-platform-abstraction-and-macos.md) | Planned                            | Extract Linux host policy, then validate a fail-closed local Podman Machine contract before enabling macOS.        |
 
 The [Plan 04 JSON example](04-agent-configuration.example.json) illustrates the full resource-selection design. It includes unsupported fields and is **not** a ready-to-use configuration. Working examples are linked from [configuration documentation](../docs/configuration.md).
 

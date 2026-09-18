@@ -35,6 +35,7 @@ export async function runAgent(input: RunAgentOptions): Promise<RunResult> {
     preferenceArgs,
   } = policy;
   const containerName = `pi-pod-${crypto.randomUUID().slice(0, 12)}`;
+  const ownershipToken = crypto.randomUUID();
   const controller = new AbortController();
   const onAbort = () => controller.abort(input.signal?.reason);
   input.signal?.addEventListener("abort", onAbort, { once: true });
@@ -70,6 +71,7 @@ export async function runAgent(input: RunAgentOptions): Promise<RunResult> {
       path: input.workspace,
       mode: workspaceMode,
       containerName,
+      ownershipToken,
       signal: controller.signal,
     });
     await assertMountSource(workspace.path);
@@ -89,6 +91,7 @@ export async function runAgent(input: RunAgentOptions): Promise<RunResult> {
       source: credentialSource.source,
       profileName: credentialSource.profileName,
       containerName,
+      ownershipToken,
       onProfileLock: (release) => {
         releaseAuth = release;
       },
@@ -139,6 +142,7 @@ export async function runAgent(input: RunAgentOptions): Promise<RunResult> {
       environment: input.environment ?? [],
       image,
       containerName,
+      ownershipToken,
       limits,
       network,
       tty: input.mode === "interactive",
@@ -150,6 +154,7 @@ export async function runAgent(input: RunAgentOptions): Promise<RunResult> {
     const execution = await runPodmanContainer({
       args,
       name: containerName,
+      ownershipToken,
       environment: podmanEnvironment(input.environment ?? []),
       signal: controller.signal,
       output: input.output,
@@ -217,7 +222,7 @@ export async function runAgent(input: RunAgentOptions): Promise<RunResult> {
   } catch (error) {
     if (!launched && workspace?.mode === "clone") {
       const runId = workspace.runId;
-      await discardUnlaunchedRun(runId, containerName).catch((cleanupError) => {
+      await discardUnlaunchedRun(runId, containerName, ownershipToken).catch((cleanupError) => {
         input.onDiagnostic?.(
           `Could not remove unstarted clone ${runId}: ${errorMessage(cleanupError)}`,
         );
@@ -230,7 +235,7 @@ export async function runAgent(input: RunAgentOptions): Promise<RunResult> {
     if (workspace?.mode === "clone") {
       if (containerRemoved) {
         try {
-          await releaseRunReservation(workspace.runId, containerName);
+          await releaseRunReservation(workspace.runId, containerName, ownershipToken);
           reservation = "released";
         } catch (error) {
           reservation = "unreleased";

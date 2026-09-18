@@ -13,7 +13,7 @@ mise exec -- ./scripts/dev-launcher build
 git diff --check
 ```
 
-If Mise is unavailable in a pi-pod worker, first verify `bun --version` matches the pin, then use that Bun directly. Use Bun, not Node, npm, pnpm, or yarn. Format intentionally with `bun run format`; `bun run format:check` never rewrites files. Prettier is development-only; no hooks or editor settings are installed. Invoke the source CLI through `./scripts/dev-launcher`; do not execute `src/cli.ts` from an untrusted workspace.
+If Mise is unavailable in a pi-pod worker, first verify `bun --version` matches the pin, then use that Bun directly. Use Bun, not Node, npm, pnpm, or yarn. Format intentionally with `bun run format`; `bun run format:check` never rewrites files. Prettier is development-only; no hooks or editor settings are installed. Invoke the source CLI through `./scripts/dev-launcher`; do not execute `src/cli.ts` from an untrusted workspace. The launcher does not inherit caller PATH entries; use explicit absolute `PI_POD_BUN_PATH` or `PI_POD_TRUSTED_PATH` only for trusted installations.
 
 ## Release bundle
 
@@ -24,7 +24,7 @@ mise exec -- bun run build:release -- --target linux-x64
 mise exec -- bun run verify:release -- dist/pi-pod-linux-x64
 ```
 
-The bundle contains `pi-pod`, `container/Containerfile`, `README.md`, and `SHA256SUMS`. Verify the checksums before copying or running it. The compiled executable is the host controller and still requires rootless Podman, cgroup v2, and a locally built image (`./pi-pod build`); it is not a Pi/OpenCode runtime. The source launcher remains the contributor and local-package entrypoint because it works across supported Bun source environments and preserves the source checkout bootstrap boundary. Compilation explicitly disables Bun dotenv, bunfig, tsconfig, and package.json autoloading; compilation alone is not the security guarantee.
+The bundle contains `pi-pod`, the audited `container/Containerfile` and locked image dependency files, `README.md`, and `SHA256SUMS`. Verify the checksums before copying or running it. The compiled executable is the host controller and still requires rootless Podman, cgroup v2, and a locally built image (`./pi-pod build`); it is not a Pi/OpenCode runtime. The source launcher remains the contributor and local-package entrypoint; installed packages expose both `pi-pod` and the legacy `pi-pod-dev` alias, and the launcher refuses caller-workspace Bun paths. Compilation explicitly disables Bun dotenv, bunfig, tsconfig, and package.json autoloading; compilation alone is not the security guarantee.
 
 Do not build or advertise macOS, Windows, or Linux arm64 artifacts. Arm64 needs a separately validated image, Bun asset, and Podman smoke test.
 
