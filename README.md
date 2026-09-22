@@ -21,7 +21,7 @@ git clone https://github.com/juliusrajala/pi-pod.git
 cd pi-pod
 bun install
 bun run build:release -- --target linux-x64
-cd dist/pi-pod-linux-x64
+cd dist/pi-pod-0.2.0-linux-x64
 sha256sum --check SHA256SUMS
 ./pi-pod build
 ```
@@ -40,22 +40,24 @@ Already signed in to Codex through Pi or OpenCode on your host? `dev` uses that 
 ./pi-pod dev /path/to/your-project --agent opencode
 ```
 
-**Edits happen directly in your project.** It can have uncommitted changes. For other credentials, use a [pi-pod profile or an explicit API key](docs/authentication.md#choose-authentication).
+**Edits happen directly in your project.** It can have uncommitted changes. To use a supported API-token source instead of the selected host credential, use a [pi-pod profile](docs/authentication.md#api-token-profiles).
 
 ### 3. Hand off a task in a separate clone
 
-Headless tasks use their own authentication. Create a pi-pod profile, then run a task against a **clean Git repository**:
+Headless CLI tasks use the selected agent's narrowly staged host credential by default. Run a task against a **clean Git repository**:
 
 ```sh
-./pi-pod login --agent pi --provider openai-codex --profile worker
-./pi-pod run /path/to/your-project --auth worker --prompt "Fix the failing unit tests"
+./pi-pod run /path/to/your-project --prompt "Fix the failing unit tests"
 ```
 
-Complete the login flow and exit Pi with `/quit` before running the task. Prefer an API key? With `ANTHROPIC_API_KEY` already set in your shell:
+To use a pi-pod-owned API token instead, create a supported profile through a private terminal prompt, then select it:
 
 ```sh
-./pi-pod run /path/to/your-project --auth none --env ANTHROPIC_API_KEY --prompt "Summarize the repository"
+./pi-pod auth profile create --agent opencode --provider anthropic --profile worker
+./pi-pod run /path/to/your-project --agent opencode --auth worker --prompt "Summarize the repository"
 ```
+
+See [authentication](docs/authentication.md) for the compatibility matrix, per-agent CLI defaults, and the profile-only public library contract.
 
 The clone includes local committed `HEAD`, even unpushed commits, but not uncommitted, ignored, or untracked files. Tasks default to a **10-minute timeout**. When the task ends, pi-pod prints the retained clone's path and run ID. Review the result there; pi-pod does not copy changes back, commit, push, or open a PR for you. Remove the clone when you're done:
 
@@ -67,7 +69,7 @@ See the [usage guide](docs/usage.md) for OpenCode tasks, prompt files, dependenc
 
 ## The boundary, in brief
 
-Agents run with a read-only image, dropped capabilities, and CPU, memory, process, and storage controls. They get no host home, SSH agent, or Podman socket. Interactive Pi can load [selected read-only host extensions](docs/agents.md#interactive-pi-extensions); headless work never imports host agent credentials or resources.
+Agents run with a read-only image, dropped capabilities, and CPU, memory, process, and storage controls. They get no host home, SSH agent, or Podman socket. Local CLI sessions stage only the selected native host credential in a private per-container directory; public headless library work requires a pi-pod API-token profile and never imports host agent credentials or resources. Interactive Pi can load [selected read-only host extensions](docs/agents.md#interactive-pi-extensions).
 
 The project you expose is writable, including any `.env` files in it. Repository code can read credentials you supply. Outbound networking is enabled by default, storage monitoring is not a hard quota, and containers share the host kernel. Read the [security guarantees and limits](docs/security.md) for the full boundary.
 

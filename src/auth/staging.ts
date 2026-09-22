@@ -1,11 +1,10 @@
-import { readdir, rm } from "node:fs/promises";
-import { join } from "node:path";
+import { readdir } from "node:fs/promises";
+import { basename, join } from "node:path";
 import { managedContainerExists } from "../container/lifecycle.ts";
-import { normalizedCredentialDocument, validateCredentialDocument } from "./credentials.ts";
+import { validateApiTokenDocument } from "./credentials.ts";
 import { hostOpenCodeOpenAiCredential, hostPiCodexCredential } from "./host.ts";
 import {
   isAgent,
-  isMissing,
   profileVersion,
   readAuthDocument,
   readAuthMetadata,
@@ -15,6 +14,7 @@ import {
 import {
   ensurePrivateStateDirectory,
   privateStateDirectory,
+  removeOwnedDirectory,
   writePrivateFile,
 } from "../utils/fs.ts";
 import { validIdentifier } from "../state/identifiers.ts";
@@ -58,8 +58,8 @@ export async function stageAuthProfile(
     throw new Error("Auth stage ownership requires both a container name and nonce.");
   }
   const source = await readAuthDocument(profile.authFile);
-  validateCredentialDocument(profile.agent, profile.provider, source);
-  const directory = join(await privateStateDirectory(), "auth-staging", crypto.randomUUID());
+  validateApiTokenDocument(profile.agent, profile.provider, source);
+  const directory = join(await authStageRoot(), crypto.randomUUID());
   await ensurePrivateStateDirectory(directory);
   await writePrivateFile(
     join(directory, "stage.json"),
@@ -78,6 +78,7 @@ export async function stageAuthProfile(
             ? null
             : validIdentifier(options.ownershipToken, "Container ownership token"),
         pid: process.pid,
+        source: "profile",
       } satisfies StageMetadata,
       null,
       2,
@@ -90,7 +91,6 @@ export async function stageAuthProfile(
   await ensurePrivateStateDirectory(agentStateDirectory);
   const authFile = join(agentStateDirectory, "auth.json");
   await writePrivateFile(authFile, source);
-  let reconciled = false;
   let cleaned = false;
 
   return {
@@ -98,20 +98,13 @@ export async function stageAuthProfile(
     directory,
     agentStateDirectory,
     authFile,
-    reconcile: async () => {
-      if (reconciled) return;
-      const updated = await readAuthDocument(authFile);
-      validateCredentialDocument(profile.agent, profile.provider, updated, true);
-      await writePrivateFile(
-        profile.authFile,
-        normalizedCredentialDocument(profile.agent, profile.provider, updated),
-      );
-      reconciled = true;
-    },
+    // API-token profiles are immutable sources for a run. Native changes are
+    // discarded with the stage and are never written back to profile state.
+    reconcile: async () => {},
     cleanup: async () => {
       if (cleaned) return;
+      await removeStageDirectory(directory);
       cleaned = true;
-      await rm(directory, { recursive: true, force: true });
     },
   };
 }
@@ -162,7 +155,7 @@ async function stageHostAuthSource(input: {
     throw new Error("Auth stage ownership requires both a container name and nonce.");
   }
   const source = await input.credential();
-  const directory = join(await privateStateDirectory(), "auth-staging", crypto.randomUUID());
+  const directory = join(await authStageRoot(), crypto.randomUUID());
   await ensurePrivateStateDirectory(directory);
   await writePrivateFile(
     join(directory, "stage.json"),
@@ -199,19 +192,16 @@ async function stageHostAuthSource(input: {
     reconcile: async () => {},
     cleanup: async () => {
       if (cleaned) return;
+      await removeStageDirectory(directory);
       cleaned = true;
-      await rm(directory, { recursive: true, force: true });
     },
   };
 }
 
 /** Remove interrupted source-only host stages only after their containers are gone. */
 export async function recoverHostAuthStages(source?: HostAuthStageSource): Promise<void> {
-  const root = join(await privateStateDirectory(), "auth-staging");
-  const entries = await readdir(root, { withFileTypes: true }).catch((error) => {
-    if (isMissing(error)) return [];
-    throw error;
-  });
+  const root = await authStageRoot();
+  const entries = await readdir(root, { withFileTypes: true });
   for (const entry of entries) {
     if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
     const directory = join(root, entry.name);
@@ -226,21 +216,18 @@ export async function recoverHostAuthStages(source?: HostAuthStageSource): Promi
     // is not enough to establish that this stage is orphaned.
     if (await hostStageIsActive(metadata)) continue;
     if (metadata.pid === undefined) continue;
-    await rm(directory, { recursive: true, force: true });
+    await removeStageDirectory(directory, metadata);
   }
 }
 
+/**
+ * Source-only stages can be shared concurrently. Recovery leaves live and
+ * preparing siblings alone, and removes only proven-orphaned stages.
+ */
 export async function recoverPendingAuthStages(profile: AuthProfile): Promise<void> {
   for (const stage of await matchingStageDirectories(profile)) {
-    await assertStageContainerStopped(stage);
-    const authFile = join(stage.directory, "agent-state", "auth.json");
-    const updated = await readAuthDocument(authFile);
-    validateCredentialDocument(profile.agent, profile.provider, updated, true);
-    await writePrivateFile(
-      profile.authFile,
-      normalizedCredentialDocument(profile.agent, profile.provider, updated),
-    );
-    await rm(stage.directory, { recursive: true, force: true });
+    if (await profileStageIsActive(stage.metadata)) continue;
+    await removeStageDirectory(stage.directory, stage.metadata);
   }
 }
 
@@ -248,18 +235,15 @@ export async function recoverPendingAuthStages(profile: AuthProfile): Promise<vo
 export async function discardPendingAuthStages(profile: AuthProfile): Promise<void> {
   for (const stage of await matchingStageDirectories(profile)) {
     await assertStageContainerStopped(stage);
-    await rm(stage.directory, { recursive: true, force: true });
+    await removeStageDirectory(stage.directory, stage.metadata);
   }
 }
 
 async function matchingStageDirectories(
   profile: AuthProfile,
 ): Promise<Array<{ directory: string; metadata: StageMetadata }>> {
-  const root = join(await privateStateDirectory(), "auth-staging");
-  const entries = await readdir(root, { withFileTypes: true }).catch((error) => {
-    if (isMissing(error)) return [];
-    throw error;
-  });
+  const root = await authStageRoot();
+  const entries = await readdir(root, { withFileTypes: true });
   const matches: Array<{ directory: string; metadata: StageMetadata }> = [];
   for (const entry of entries) {
     if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
@@ -277,6 +261,37 @@ async function matchingStageDirectories(
   return matches;
 }
 
+async function authStageRoot(): Promise<string> {
+  const root = join(await privateStateDirectory(), "auth-staging");
+  // Canonical/private verification rejects a symlinked descendant rather than
+  // following it during recovery.
+  return ensurePrivateStateDirectory(root);
+}
+
+async function removeStageDirectory(directory: string, expected?: StageMetadata): Promise<void> {
+  const root = await authStageRoot();
+  const id = basename(directory);
+  await removeOwnedDirectory(root, id, async (quarantined) => {
+    const actual = await readStageMetadata(join(quarantined, "stage.json"));
+    if (expected !== undefined && !sameStageMetadata(actual, expected)) {
+      throw new Error("Credential stage metadata changed before guarded removal.");
+    }
+  });
+}
+
+function sameStageMetadata(left: StageMetadata, right: StageMetadata): boolean {
+  return (
+    left.version === right.version &&
+    left.agent === right.agent &&
+    left.name === right.name &&
+    left.provider === right.provider &&
+    left.containerName === right.containerName &&
+    left.ownershipToken === right.ownershipToken &&
+    left.pid === right.pid &&
+    left.source === right.source
+  );
+}
+
 async function readStageMetadata(path: string): Promise<StageMetadata> {
   const value = await readAuthMetadata(path, "auth stage metadata");
   if (
@@ -290,7 +305,7 @@ async function readStageMetadata(path: string): Promise<StageMetadata> {
     (value.containerName === null) !== (value.ownershipToken === null) ||
     (value.pid !== undefined &&
       (typeof value.pid !== "number" || !Number.isInteger(value.pid) || value.pid <= 0)) ||
-    (value.source !== undefined && value.source !== "host-pi" && value.source !== "host-opencode")
+    (value.source !== "profile" && value.source !== "host-pi" && value.source !== "host-opencode")
   ) {
     throw new Error(`Invalid auth stage metadata: ${path}`);
   }
@@ -308,12 +323,15 @@ async function readStageMetadata(path: string): Promise<StageMetadata> {
     containerName: value.containerName,
     ownershipToken: value.ownershipToken,
     ...(value.pid === undefined ? {} : { pid: value.pid }),
-    source:
-      value.source === "host-pi" || value.source === "host-opencode" ? value.source : "profile",
+    source: value.source,
   };
 }
 
 async function hostStageIsActive(metadata: StageMetadata): Promise<boolean> {
+  return profileStageIsActive(metadata);
+}
+
+async function profileStageIsActive(metadata: StageMetadata): Promise<boolean> {
   // Check the owner first: this covers the interval before Podman has created
   // the named container and avoids asking recovery to race startup.
   if (metadata.pid !== undefined && processExists(metadata.pid)) return true;

@@ -45,7 +45,7 @@ The supported release target is currently Linux x64 only. From the canonical rep
 
 ```sh
 mise exec -- bun run build:release -- --target linux-x64
-mise exec -- bun run verify:release -- dist/pi-pod-linux-x64
+mise exec -- bun run verify:release -- dist/pi-pod-0.2.0-linux-x64
 ```
 
 The bundle contains `pi-pod`, the audited `container/Containerfile` and locked image dependency files, `README.md`, and `SHA256SUMS`. Verify the checksums before copying or running it. The compiled executable is the host controller and still requires rootless Podman, cgroup v2, and a locally built image (`./pi-pod build`); it is not a Pi/OpenCode runtime. The source launcher remains the contributor and local-package entrypoint; installed packages expose both `pi-pod` and the legacy `pi-pod-dev` alias, and the launcher refuses caller-workspace Bun paths. Compilation explicitly disables Bun dotenv, bunfig, tsconfig, and package.json autoloading; compilation alone is not the security guarantee.
@@ -63,14 +63,14 @@ PI_POD_SYSTEMD_INTEGRATION=1 mise exec -- bun test src/cli/delegation.integratio
 
 Tests use temporary fake credentials and fixtures. Never make personal configuration, OAuth, paid model requests, or provider tokens a normal dependency.
 
-The normal suite does not access provider accounts, personal configuration, real repositories, or forge credentials. Real OAuth login/reuse/refresh remains a separate, required [user-assisted validation procedure](authentication.md#required-manual-oauth-validation-for-autonomous-profiles) for autonomous profiles.
+The normal suite does not access provider accounts, personal configuration, real repositories, or forge credentials. Supported API-token profile validation uses generated fake values only. Any real provider workflow is opt-in and must never record a token or provider response.
 
 ## Source map and reading order
 
 1. `src/cli/bootstrap.ts` and `scripts/dev-launcher`: trusted host startup boundary.
 2. `src/cli/`: syntax and command composition.
-3. `src/execution/`: public run/login orchestration, policy, prompt staging, and outcomes.
-4. `src/auth/`: auth policy, selected-provider storage, staging, locks, and recovery.
+3. `src/execution/`: run orchestration, policy, prompt staging, and outcomes.
+4. `src/auth/`: API-token profile/default storage, selected host staging, and recovery.
 5. `src/workspace/` and `src/state/`: preparation, retained ownership/removal, and wrapper state policy.
 6. `src/container/` and `src/resources/`: hardened argv, lifecycle, limits, and storage enforcement.
 

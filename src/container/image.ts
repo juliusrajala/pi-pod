@@ -1,7 +1,9 @@
+import packageManifest from "../../package.json" with { type: "json" };
 import type { ResourceLimits } from "../execution/types.ts";
 
 /** Shared, pinned image reference. Builds and launches never discover an image. */
-export const defaultImage = "localhost/pi-pod:0.1.0";
+export const piPodVersion = packageManifest.version;
+export const defaultImage = `localhost/pi-pod:${piPodVersion}`;
 
 /** Headless runs have an explicit ten-minute default; interactive runs do not. */
 export const defaultHeadlessTimeoutMs = 10 * 60 * 1_000;

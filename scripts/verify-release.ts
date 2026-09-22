@@ -9,7 +9,7 @@ import {
 
 const [requested] = process.argv.slice(2);
 if (requested === undefined || process.argv.slice(2).length !== 1) {
-  throw new Error("Usage: bun run verify:release -- dist/pi-pod-linux-x64");
+  throw new Error("Usage: bun run verify:release -- dist/pi-pod-<version>-linux-x64");
 }
 const bundle = await realpath(
   isAbsolute(requested) ? requested : resolve(process.cwd(), requested),

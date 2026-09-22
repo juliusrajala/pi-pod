@@ -2,7 +2,6 @@ import { Crust } from "@crustjs/core";
 import { authCommand } from "./commands/auth.ts";
 import { devCommand, runCommand } from "./commands/agent.ts";
 import { buildCommand } from "./commands/build.ts";
-import { loginCommand } from "./commands/login.ts";
 import { removeCommand } from "./commands/remove.ts";
 import { requireNoAgentArguments, requireNoExtraArguments } from "./commands/validation.ts";
 import { isWrapperHelpRequest, usage } from "./help.ts";
@@ -19,7 +18,6 @@ const helpCommand = new Crust("help")
 export const app = new Crust("pi-pod")
   .meta({ description: "Run Pi and OpenCode in a hardened rootless Podman workspace" })
   .command(buildCommand)
-  .command(loginCommand)
   .command(devCommand)
   .command(runCommand)
   .command(removeCommand)

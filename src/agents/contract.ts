@@ -38,6 +38,4 @@ export type AgentDefinition = {
     promptPath?: string;
     agentArgs: readonly string[];
   }) => string[];
-  loginCommand: (provider: string) => string[];
-  loginInstructions: (provider: string) => string;
 };

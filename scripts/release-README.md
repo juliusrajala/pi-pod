@@ -26,8 +26,7 @@ Start an interactive session using your existing host Pi Codex login:
 ```
 
 This edits your project directly. Add `--agent opencode` to use OpenCode and its
-selected host login instead. For a headless task in a retained clone, use `run`
-with a pi-pod profile or explicit API key.
+selected host login instead. A local CLI headless task also uses its selected host credential by default; use an explicit supported pi-pod API-token profile when needed.
 
 - [Usage and reviewing task results](https://github.com/juliusrajala/pi-pod/blob/main/docs/usage.md)
 - [Authentication and recovery](https://github.com/juliusrajala/pi-pod/blob/main/docs/authentication.md)

@@ -30,9 +30,9 @@ Use Bun, not Node, npm, pnpm, or yarn. The development launcher is `./scripts/de
 
 - `index.ts` — public library exports.
 - `src/cli/` — parsing, commands, signals, output, and delegation.
-- `src/execution/` — run/login orchestration, policy, prompt staging, and finalization.
+- `src/execution/` — run orchestration, policy, prompt staging, and finalization.
 - `src/container/` — restrictive Podman arguments, preflight, and lifecycle.
-- `src/auth/` — profiles, host credential validation/staging, locking, and recovery.
+- `src/auth/` — API-token profiles/defaults, host credential validation/staging, and guarded recovery.
 - `src/workspace/` — direct/clone preparation and retained-run lifecycle/removal.
 - `src/agents/pi/dev-resources.ts` — filtered, read-only interactive Pi extension/package resources.
 - `container/Containerfile` — pinned agent image.
@@ -40,8 +40,8 @@ Use Bun, not Node, npm, pnpm, or yarn. The development launcher is `./scripts/de
 
 ## Security invariants
 
-- `dev` may stage only the narrowly selected host Codex credential and approved, read-only Pi development resources. It must never write host Pi state back.
-- Headless `run` and library-autonomous use must never read or mount host Pi credentials, settings, extensions, sessions, skills, analytics, or shell configuration. They use a pi-pod profile or explicitly named API-key variables.
+- Local CLI `dev` and `run` may stage only the selected native host credential (Pi `openai-codex`, OpenCode `openai`) or an explicitly selected pi-pod API-token profile. They must never mount a host auth directory or write host/profile state back.
+- Public headless library use requires an explicit pi-pod API-token profile and must never read or mount host Pi/OpenCode credentials, CLI defaults, settings, extensions, sessions, skills, analytics, shell configuration, or arbitrary API-key environment variables.
 - Do not add broad host mounts, Podman socket access, SSH/Git credential forwarding, proxy forwarding, arbitrary Podman options, or credential values in argv, logs, diagnostics, tests, or docs.
 - Preserve rootless Podman, dropped capabilities, `no-new-privileges`, read-only image root, resource limits, workspace isolation, and guarded retained-run deletion unless an explicit security decision and regression tests justify a change.
 - Treat bind workspaces as untrusted and potentially destructive. Do not copy changes back, commit, push, publish, or remove caller-owned workspaces automatically.

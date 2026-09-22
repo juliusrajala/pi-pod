@@ -21,18 +21,18 @@ git clone https://github.com/juliusrajala/pi-pod.git
 cd pi-pod
 bun install
 bun run build:release -- --target linux-x64
-bun run verify:release -- dist/pi-pod-linux-x64
+bun run verify:release -- dist/pi-pod-0.2.0-linux-x64
 ```
 
 If you use Mise, prefix the Bun commands with `mise exec --` to select the repository-pinned runtime.
 
-This produces `dist/pi-pod-linux-x64/`, containing the executable, image recipe and locked dependencies, bundle README, and checksums. It also smoke-tests the compiled CLI's help command from a workspace with hostile startup configuration. The agent image is built in the next step.
+This produces `dist/pi-pod-0.2.0-linux-x64/`, containing the executable, image recipe and locked dependencies, bundle README, and checksums. It also smoke-tests the compiled CLI's help command from a workspace with hostile startup configuration. The agent image is built in the next step.
 
-The build refuses to overwrite an existing `dist/pi-pod-linux-x64` directory. If rebuilding, move the previous bundle to a location you want to keep before running the build again.
+The build refuses to overwrite an existing versioned bundle directory. If rebuilding the same version, move the previous bundle to a location you want to keep before running the build again.
 
 ## Set up the bundle
 
-From a source build, enter `dist/pi-pod-linux-x64`. If you already have a bundle, enter its extracted directory instead. Verify checksums, then build the agent image:
+From a source build, enter `dist/pi-pod-0.2.0-linux-x64`. If you already have a bundle, enter its extracted directory instead. Verify checksums, then build the agent image:
 
 ```sh
 sha256sum --check SHA256SUMS
@@ -74,7 +74,7 @@ Linked/installed packages expose `pi-pod` and the legacy `pi-pod-dev` alias thro
 
 ## Agent image
 
-The default image is `localhost/pi-pod:0.1.0`. It contains:
+The default image is `localhost/pi-pod:0.2.0`. It contains:
 
 | Component         | Version / tools                    |
 | ----------------- | ---------------------------------- |

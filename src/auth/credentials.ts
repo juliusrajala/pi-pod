@@ -1,5 +1,5 @@
 import { agentDefinition } from "../agents/registry.ts";
-import type { AgentName } from "../execution/types.ts";
+import type { AgentName } from "../agents/registry.ts";
 
 /**
  * Parse a bounded untrusted auth document and dispatch its selected native
@@ -34,6 +34,43 @@ export function normalizedHostCredentialDocument(
 
 export function assertSupportedCredentialProvider(agent: AgentName, provider: string): void {
   agentDefinition(agent).credentialCodec.assertProvider(provider);
+}
+
+/** The reviewed API-token matrix is deliberately smaller than host OAuth support. */
+export function assertApiTokenProvider(agent: AgentName, provider: string): void {
+  if (agent !== "opencode" || provider !== "anthropic") {
+    throw new Error(
+      `API-token profiles do not support ${agent}/${provider}. Supported combination: opencode/anthropic.`,
+    );
+  }
+}
+
+/** Encode the exact pinned native document; never accept caller-supplied JSON. */
+export function encodeApiToken(agent: AgentName, provider: string, token: string): string {
+  assertApiTokenProvider(agent, provider);
+  if (typeof token !== "string" || token.length === 0 || token.length > 16 * 1024) {
+    throw new Error("API token must be nonempty and at most 16384 characters.");
+  }
+  return `${JSON.stringify({ [provider]: { type: "api", key: token } })}\n`;
+}
+
+/** Profiles accept only the exact source-only API-token shape, not native OAuth extras. */
+export function validateApiTokenDocument(agent: AgentName, provider: string, text: string): void {
+  assertApiTokenProvider(agent, provider);
+  const document = parseJson(text, "auth.json");
+  if (!isRecord(document) || Object.keys(document).length !== 1 || !isRecord(document[provider])) {
+    throw new Error("Invalid API-token credential document.");
+  }
+  const credential = document[provider];
+  if (
+    Object.keys(credential).length !== 2 ||
+    credential.type !== "api" ||
+    typeof credential.key !== "string" ||
+    credential.key.length === 0 ||
+    credential.key.length > 16 * 1024
+  ) {
+    throw new Error("Invalid API-token credential document.");
+  }
 }
 
 function selectedCredential(

@@ -1,10 +1,5 @@
-import type { AgentName } from "../execution/types.ts";
-import {
-  acquireAuthProfile,
-  removeAuthProfileLock as removeProfileLock,
-  type ProfileLock,
-} from "./lock.ts";
-import { createAuthProfile, loadAuthProfile, type AuthProfile } from "./profiles.ts";
+import type { AgentName } from "../agents/registry.ts";
+import { loadAuthProfile, type AuthProfile } from "./profiles.ts";
 import {
   discardPendingAuthStages as discardStages,
   recoverHostAuthStages,
@@ -15,10 +10,8 @@ import {
   type HostAuthStage,
 } from "./staging.ts";
 
-export type { AuthProfile, AuthStage, HostAuthStage, ProfileLock };
+export type { AuthProfile, AuthStage, HostAuthStage };
 export {
-  acquireAuthProfile,
-  createAuthProfile,
   loadAuthProfile,
   recoverHostAuthStages,
   recoverPendingAuthStages,
@@ -26,29 +19,7 @@ export {
   stageHostAuth,
 };
 
-/** Recover interrupted stages while holding the same exclusive profile lock as a live agent. */
-export async function recoverAuthProfile(agent: AgentName, name: string): Promise<void> {
-  const profile = await loadAuthProfile(agent, name);
-  const lock = await acquireAuthProfile(profile);
-  try {
-    await recoverPendingAuthStages(profile);
-  } finally {
-    await lock.release();
-  }
-}
-
-/** Discard interrupted stages while holding the same exclusive profile lock as a live agent. */
+/** Discard interrupted source-only API-token stages after exact container checks. */
 export async function discardPendingAuthStages(agent: AgentName, name: string): Promise<void> {
-  const profile = await loadAuthProfile(agent, name);
-  const lock = await acquireAuthProfile(profile);
-  try {
-    await discardStages(profile);
-  } finally {
-    await lock.release();
-  }
-}
-
-/** Unlock only after the profile owner and its managed container are absent. */
-export async function removeAuthProfileLock(agent: AgentName, name: string): Promise<void> {
-  await removeProfileLock(await loadAuthProfile(agent, name));
+  await discardStages(await loadAuthProfile(agent, name));
 }

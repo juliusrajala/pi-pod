@@ -8,7 +8,7 @@ Set up the compiled CLI and build the agent image using the [installation guide]
 | ---------------------- | ---------------------------------------- | ------------------------------------- |
 | Use it for             | Working alongside an agent               | Giving an agent a task to complete    |
 | Default workspace      | Your directory, edited directly (`bind`) | A separate local-HEAD clone (`clone`) |
-| Default authentication | Selected host Codex credential (`host`)  | pi-pod profile named `default`        |
+| Default authentication | Selected host credential (`host`)        | Selected host credential (`host`)     |
 | Task input             | Interactive session                      | `--prompt` or `--prompt-file`         |
 | Default timeout        | No task timeout                          | 600 seconds                           |
 
@@ -23,44 +23,38 @@ Both default to Pi. Add `--agent opencode` to select OpenCode.
 
 The agent edits the supplied directory directly, including uncommitted work. Exit through the agent's normal UI when finished (for Pi, `/quit`).
 
-By default, Pi uses your host `openai-codex` credential and OpenCode uses your host `openai` credential. If you use another provider or haven't signed in on the host, choose a [profile or API key](authentication.md#choose-authentication). Interactive Pi can also load [selected read-only host extensions](agents.md#interactive-pi-extensions).
+By default, Pi uses your host `openai-codex` credential and OpenCode uses your host `openai` credential. To use a supported API-token source instead, choose a [profile](authentication.md#api-token-profiles). Interactive Pi can also load [selected read-only host extensions](agents.md#interactive-pi-extensions).
 
 ## Run a headless task
 
-Start with a clean Git repository and a pi-pod profile. For Pi's Codex login:
+Start with a clean Git repository. The local CLI stages the selected native host credential by default:
 
 ```sh
-./pi-pod login --agent pi --provider openai-codex --profile worker
+./pi-pod run /path/to/your-project --prompt "Fix the failing unit tests"
 ```
 
-Complete the login flow and exit with `/quit`, then run:
+A supported API-token profile is an explicit alternative. Create it through a no-echo terminal prompt, then select it with the same agent:
 
 ```sh
-./pi-pod run /path/to/your-project --auth worker --prompt "Fix the failing unit tests"
-```
-
-OpenCode profiles belong to OpenCode; create and select one with the same agent:
-
-```sh
-./pi-pod login --agent opencode --provider <provider-id> --profile worker
+./pi-pod auth profile create --agent opencode --provider anthropic --profile worker
 ./pi-pod run /path/to/your-project --agent opencode --auth worker --prompt "Fix the failing unit tests"
 ```
 
-Replace `<provider-id>` with your OpenCode provider identifier. See [supported authentication](agents.md#authentication-identifiers).
+See [supported authentication](agents.md#authentication-identifiers) for the intentionally restricted compatibility matrix.
 
 For a longer task, put the instructions in a file and optionally adjust the timeout. Prompt-file paths are relative to your calling directory, not the target project:
 
 ```sh
-./pi-pod run /path/to/your-project --auth worker --prompt-file /path/to/task.md --timeout 1200
+./pi-pod run /path/to/your-project --agent opencode --auth worker --prompt-file /path/to/task.md --timeout 1200
 ```
 
-Use exactly one of `--prompt` and `--prompt-file`. To use an API key instead of a profile, with the named variable already set in your shell:
+Use exactly one of `--prompt` and `--prompt-file`. To use the selected host credential explicitly instead of a profile:
 
 ```sh
-./pi-pod run /path/to/your-project --auth none --env ANTHROPIC_API_KEY --prompt "Summarize the repository"
+./pi-pod run /path/to/your-project --auth host --prompt "Summarize the repository"
 ```
 
-Headless work never reads host agent credentials or resources; `--auth host` is rejected. If `--auth` is omitted, `run` selects the pi-pod profile named `default`. See [authentication](authentication.md) for profile storage and recovery.
+Local CLI headless work defaults to the selected agent's narrowly staged host credential. Use `--auth worker` to select an API-token profile, or `--auth host` explicitly. The public library has a different profile-only headless contract; see [authentication](authentication.md).
 
 ### Review and remove the result
 
@@ -89,10 +83,10 @@ Only remove it after saving anything you want to keep. Removal checks are descri
 Override the default with `--workspace`. For example, to run a task directly in a directory that isn't a clean Git repository:
 
 ```sh
-./pi-pod run /path/to/your-project --workspace bind --auth worker --prompt "Explain this project"
+./pi-pod run /path/to/your-project --workspace bind --agent opencode --auth worker --prompt "Explain this project"
 ```
 
-Bind mode allows direct edits even if your prompt only asks for an explanation. `remove` refuses while the exact run container or its preparation reservation exists. It never removes a bind workspace. See [lifecycle outcomes](authentication.md#lifecycle-outcomes) for setup and cleanup failures.
+Bind mode allows direct edits even if your prompt only asks for an explanation. `remove` refuses while the exact run container or its preparation reservation exists. It never removes a bind workspace. See [authentication staging and cleanup](authentication.md) for credential-stage behavior.
 
 ## Workspace dependencies and toolchains
 
@@ -109,8 +103,7 @@ Use `./pi-pod --help` or `./pi-pod run --help` for command help. Common options:
 ```text
 --agent pi|opencode
 --workspace bind|clone
---auth host|<profile>|none
---env NAME                         repeatable, explicit API-key forwarding
+--auth host|<profile>              selected source; defaults to per-agent CLI source then host
 --image IMAGE
 --config /absolute/path.json        explicit agent/mode model preferences
 --no-config                        dev only; skip the preference-file layer

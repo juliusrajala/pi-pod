@@ -23,8 +23,6 @@ test("registry constructor exercises a fixture integration without loading plugi
     credentialCodec: { assertProvider: () => {}, normalize: () => ({}) },
     preferenceArguments: () => [],
     command: () => ["fixture"],
-    loginCommand: () => ["fixture", "login"],
-    loginInstructions: () => "fixture login",
   };
   const registry = createAgentRegistry(["fixture"] as const, [fixture]);
   expect(registry.fixture.command({ mode: "headless", agentArgs: [] })).toEqual(["fixture"]);

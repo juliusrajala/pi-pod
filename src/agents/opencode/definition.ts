@@ -65,8 +65,6 @@ export const openCodeDefinition: AgentDefinition = {
       : promptPath === undefined
         ? ["opencode", "run", "--pure", "--auto", ...agentArgs, ""]
         : promptFileCommand(promptPath, agentArgs),
-  loginCommand: (provider) => ["opencode", "auth", "login", "--provider", provider],
-  loginInstructions: (provider) => `Complete OpenCode's native login for ${provider}.`,
 };
 
 function hasAnyFlag(args: readonly string[], names: readonly string[]): boolean {

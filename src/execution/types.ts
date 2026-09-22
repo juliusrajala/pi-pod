@@ -48,17 +48,18 @@ export type PreparedWorkspace = BindWorkspace | CloneWorkspace;
  * Trusted host-caller options. Do not expose this type directly to an agent or
  * an untrusted HTTP request without validating its fields against a policy.
  */
-export type RunAgentOptions = {
+export type ProfileAuth = { type: "profile"; name: string };
+export type HostAuth = { type: "host" };
+export type AuthenticationSource = ProfileAuth | HostAuth;
+
+type CommonRunAgentOptions = {
   agent?: AgentName;
-  mode: RunMode;
   workspace: string;
   workspaceMode?: WorkspaceMode;
   prompt?: string;
   /** Typed preferences supplied by a trusted caller; the library never reads a config file. */
   preferences?: AgentPreferences;
   agentArgs?: readonly string[];
-  environment?: readonly string[];
-  authProfile?: string | "none";
   image?: string;
   limits?: Partial<ResourceLimits>;
   timeoutMs?: number;
@@ -69,16 +70,24 @@ export type RunAgentOptions = {
   output?: OutputSinks;
 };
 
+/**
+ * Headless library callers must name a pi-pod-owned API-token profile. The
+ * CLI resolves host/default policy before it enters this public API.
+ */
+export type RunAgentOptions =
+  | (CommonRunAgentOptions & { mode: "headless"; auth: ProfileAuth })
+  | (CommonRunAgentOptions & { mode: "interactive"; auth: AuthenticationSource });
+
 export type OutputOutcome = {
   mode: "inherited" | "streamed";
   error?: string;
 };
 
 export type AuthOutcome = {
-  /** `host` is an interactive source-only stage; it never writes to host agent state. */
-  source: "none" | "profile" | "host";
-  reconciliation: "not-used" | "persisted" | "retained";
-  lock: "not-used" | "released" | "retained" | "release-failed";
+  /** Both profile and host stages are source-only; neither writes back. */
+  source: "profile" | "host";
+  reconciliation: "not-used" | "retained";
+  lock: "not-used";
   error?: string;
 };
 
@@ -97,20 +106,4 @@ export type RunResult = {
   /** Credential persistence and lock disposition after container cleanup. */
   auth: AuthOutcome;
   output: OutputOutcome;
-};
-
-export type LoginOptions = {
-  agent: AgentName;
-  provider: string;
-  profile?: string;
-  image?: string;
-  signal?: AbortSignal;
-  onDiagnostic?: (message: string) => void;
-  output?: OutputSinks;
-};
-
-export type LoginResult = {
-  agent: AgentName;
-  provider: string;
-  profile: string;
 };

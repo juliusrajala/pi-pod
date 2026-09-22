@@ -194,7 +194,7 @@ test("Crust rejects invalid input before auth, workspace, or Podman actions", as
     for (const argv of [
       ["run", root, "--unknown"],
       ["build", "unexpected"],
-      ["login", "--agent", "pi", "--provider", "openai-codex", "--", "unexpected"],
+      ["auth", "profile", "list", "--", "unexpected"],
     ]) {
       const child = Bun.spawn([sourceLauncher(), ...argv], {
         cwd: root,
@@ -213,7 +213,7 @@ test("Crust rejects invalid input before auth, workspace, or Podman actions", as
       ]);
 
       expect(exitCode).toBe(1);
-      expect(stderr).toMatch(/Unknown flag|does not accept/);
+      expect(stderr).toMatch(/Unknown flag|does not accept|Unknown command/);
     }
     expect(await Bun.file(marker).exists()).toBe(false);
     expect(await Bun.file(join(state, "pi-pod")).exists()).toBe(false);
@@ -278,12 +278,19 @@ test("explicit run configuration applies only the selected run preferences", asy
         },
       }),
     );
+    const hostAuthDirectory = join(root, ".local", "share", "opencode");
+    await mkdir(hostAuthDirectory, { recursive: true });
+    await writeFile(
+      join(hostAuthDirectory, "auth.json"),
+      '{"openai":{"type":"oauth","access":"fake","refresh":"fake","expires":0}}\n',
+      { mode: 0o600 },
+    );
     await writeFile(
       join(bin, "podman"),
       `#!/bin/sh
 case "$1" in
   info) printf '%s\\n' '{"host":{"os":"linux","cgroupVersion":"v2","cgroupControllers":["cpu","memory","pids"],"serviceIsRemote":false,"security":{"rootless":true}}}' ;;
-  run) printf '%s\\n' "$@" > ${JSON.stringify(trace)} ;;
+  run) printf '%s\\n' "$@" > ${JSON.stringify(trace)};;
   container) exit 1 ;;
 esac
 `,
@@ -299,7 +306,7 @@ esac
         "--agent",
         "opencode",
         "--auth",
-        "none",
+        "host",
         "--prompt",
         "fixture",
         "--config",
@@ -316,6 +323,7 @@ esac
           PI_POD_TRUSTED_PATH: bin,
           XDG_STATE_HOME: join(root, "state"),
           XDG_CONFIG_HOME: join(root, "invalid"),
+          HOME: root,
         },
       },
     );

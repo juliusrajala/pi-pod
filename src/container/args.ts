@@ -1,5 +1,6 @@
 import { stat } from "node:fs/promises";
 import { agentDefinition } from "../agents/registry.ts";
+import { piPodVersion } from "./image.ts";
 import type { AgentName, ResourceLimits, RunMode } from "../execution/types.ts";
 import { commandOutput, hostToolEnvironment } from "../utils/process.ts";
 import { assertSafeMountPath } from "../state/identifiers.ts";
@@ -117,6 +118,8 @@ export function buildPodmanRunArgs(options: PodmanLaunchOptions): string[] {
     options.containerName,
     "--label",
     "io.pi-pod.managed=true",
+    "--label",
+    `io.pi-pod.version=${piPodVersion}`,
     ...(options.ownershipToken === undefined
       ? []
       : ["--label", `io.pi-pod.owner=${options.ownershipToken}`]),

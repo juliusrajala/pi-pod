@@ -1,88 +1,73 @@
 # Authentication
 
-Choose how the container agent authenticates to its model provider. Credentials and agent settings are separate: selecting an auth source does not import a host settings bundle.
+pi-pod has two credential sources: **host** and **profile**. A credential deliberately supplied to a container can be read or exfiltrated by repository code running there. Private staging limits host-state access and prevents write-back; it does not make an in-container credential secret.
 
-Examples use the compiled `./pi-pod` executable from its [bundle directory](installation.md#set-up-the-bundle).
+## Host authentication
 
-## Choose authentication
-
-| Source                   | `dev`                       | `run`                        | Ownership and lifecycle                                                                                                                                                                     |
-| ------------------------ | --------------------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `host`                   | Default for Pi and OpenCode | Rejected                     | Reads and stages one selected host credential in a fresh private per-session directory. Concurrent interactive dev sessions are supported; it never mounts or writes host agent state back. |
-| Named profile            | Explicit `--auth <profile>` | Default profile is `default` | pi-pod-owned selected-provider credentials under `$XDG_STATE_HOME/pi-pod/auth/` (or `~/.local/state/pi-pod/auth/`). One container uses a profile at a time.                                 |
-| `none` plus `--env NAME` | Yes                         | Yes                          | A trusted caller explicitly forwards one allowed API-key variable through the Podman client environment, not argv.                                                                          |
-
-### Use an existing host login for interactive work
-
-`dev` defaults to `--auth host`. Pi stages only the `openai-codex` entry from `~/.pi/agent/auth.json`; OpenCode stages only the `openai` entry from `$XDG_DATA_HOME/opencode/auth.json` (or `~/.local/share/opencode/auth.json`). You must already be signed in to that provider through the selected host agent.
+The local CLI defaults to the selected agent's reviewed host credential for both `dev` and `run`:
 
 ```sh
-./pi-pod dev /path/to/your-project
-./pi-pod dev /path/to/your-project --agent opencode
+./pi-pod dev /path/to/project
+./pi-pod run /path/to/project --prompt "Fix the failing tests"
 ```
 
-Each session receives a fresh private stage. Concurrent host-auth dev sessions are supported, no host credential directory is mounted, and pi-pod never writes the staged credential back. For another provider, use a supported profile or API key.
+Pi stages only `openai-codex` from `~/.pi/agent/auth.json`. OpenCode stages only `openai` from `$XDG_DATA_HOME/opencode/auth.json` (or its standard home fallback). It copies that one native credential to a fresh private stage, mounts only that stage, never mounts a host agent directory, and never writes changes back. The CLI can select host explicitly with `--auth host`.
 
-`run` and library-autonomous use never read host Pi/OpenCode credentials, settings, extensions, sessions, skills, analytics, or shell configuration. `run --auth host` is rejected before workspace, state, or Podman side effects.
+This local CLI capability is not public-library behavior. Headless `runAgent` calls require an explicit pi-pod profile and never inspect host credentials or CLI defaults.
 
-### Create a profile for tasks
+## API-token profiles
 
-Use a profile for native subscription login. For Pi:
+Profiles are pi-pod-owned, source-only API tokens bound to an agent and provider. Create one through the controlling terminal; the token is prompted without echo and is never accepted in argv:
 
 ```sh
-./pi-pod login --agent pi --provider openai-codex --profile worker
+./pi-pod auth profile create --agent opencode --provider anthropic --profile worker
+./pi-pod run /path/to/project --agent opencode --auth worker --prompt "Fix the failing tests"
 ```
 
-Complete the device-code flow and exit Pi with `/quit`. Then select the profile for a task or an interactive session:
+The currently verified matrix is deliberately small:
+
+| Agent    | Provider    | Native stored shape                              | Validation                                 |
+| -------- | ----------- | ------------------------------------------------ | ------------------------------------------ |
+| OpenCode | `anthropic` | `{ "anthropic": { "type": "api", "key": "…" } }` | Pinned native codec and fixture validation |
+| Pi       | —           | —                                                | No API-token profile is advertised yet     |
+
+Manage profiles without displaying secret material:
 
 ```sh
-./pi-pod run /path/to/your-project --auth worker --prompt "Fix the failing unit tests"
-./pi-pod dev /path/to/your-project --auth worker
+./pi-pod auth profile list
+./pi-pod auth profile show --agent opencode --profile worker
+./pi-pod auth profile update --agent opencode --profile worker
+./pi-pod auth profile remove --agent opencode --profile worker
 ```
 
-For OpenCode, use `login --agent opencode --provider <provider-id> --profile worker` and include `--agent opencode --auth worker` when launching. Provider identifiers and supported credential forms are listed in [supported agents](agents.md#authentication-identifiers).
+Each run gets a separate stage from the stored source. Runs may use the same profile concurrently. Native changes to a stage are discarded, never reconciled to the profile. Updating a profile atomically affects future stages; removing it does not revoke copies in live containers.
 
-Without `--auth`, `run` selects the pi-pod profile named `default`; you can create it with `login --agent pi --provider openai-codex --profile default`. A profile belongs to one agent and provider and persists only the selected native provider credential under `$XDG_STATE_HOME/pi-pod/auth/` (or `~/.local/state/pi-pod/auth/`). One container uses a profile at a time because the agent may refresh and persist the credential. Use separate named profiles for concurrent tasks.
+Version-1/OAuth profile state is rejected with an instruction to remove and recreate it. pi-pod does not migrate or automatically delete legacy state.
 
-### Forward an API key
+## CLI defaults
 
-With the key already set in your shell, pass its **variable name**, not its value:
+The CLI chooses authentication in this order: invocation `--auth host|PROFILE`, selected agent's saved default, then built-in `host`. Defaults contain a source reference only:
 
 ```sh
-./pi-pod run /path/to/your-project --auth none --env ANTHROPIC_API_KEY --prompt "Summarize the repository"
+./pi-pod auth default set --agent opencode --auth worker
+./pi-pod auth default set --agent opencode --auth host
+./pi-pod auth default show --agent opencode
+./pi-pod auth default clear --agent opencode
 ```
 
-The same `--auth none --env NAME` options work with `dev`. Values stay in the Podman client environment, not argv. Names are validated against a narrow allowlist policy; forge, SSH, database, proxy, cloud-secret, and unrelated credential variables are rejected. Never pass a credential if repository code run by the agent must not receive it.
+A profile default must exist and belong to the selected agent. `host` is reserved; `none` is not an authentication source. Profile removal refuses while it is selected as that agent's default.
 
-## Recover an interrupted profile
+## Library callers
 
-If pi-pod reports an interrupted stage, use the named command indicated by the diagnostic. These are separate recovery actions, not a sequence to run after every task:
+Headless library use is explicit and profile-only:
 
-```sh
-./pi-pod auth recover --agent pi --profile worker
-./pi-pod auth discard --agent pi --profile worker
-./pi-pod auth unlock --agent pi --profile worker
+```ts
+await runAgent({
+  mode: "headless",
+  workspace: "/srv/jobs/job-123/workspace",
+  auth: { type: "profile", name: "worker" },
+  prompt: "Fix the failing tests",
+});
 ```
 
-Use recovery only when the command reports an interrupted stage and verifies its recorded container is absent. `discard` removes an unwanted retained stage; `unlock` removes only a stale lock whose PID and exact container are gone. Do not delete the auth state tree as a troubleshooting shortcut.
-
-## Lifecycle outcomes
-
-| Outcome                                                            | Workspace                                             | Auth stage/profile lock                                                                                                   |
-| ------------------------------------------------------------------ | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| Normal exit or nonzero agent exit after verified container removal | Clone retained; bind untouched                        | Selected profile credential is reconciled; stage is removed and lock released. Host stage is discarded without copy-back. |
-| Timeout or abort after verified container removal                  | Clone retained; bind untouched                        | Same reconciliation/discard path applies.                                                                                 |
-| Setup failure before launch                                        | Acquired clone preparation is removed; bind untouched | Any acquired lock is released; no completed execution result is returned.                                                 |
-| Container removal cannot be verified                               | Clone reservation retained                            | Credential, prompt, and resource stages remain private; profile lock remains retained.                                    |
-| Credential reconciliation fails                                    | Clone retained                                        | Private stage is retained for guarded recovery; the result/CLI reports recovery is needed.                                |
-
-## Required manual OAuth validation for autonomous profiles
-
-Real provider login, credential reuse, and refresh require user-assisted validation; automated tests use fake credentials. This procedure cannot run in CI and must never expose a token. After building the image, use a disposable empty directory and a named profile:
-
-1. Run `./pi-pod login --agent pi --provider openai-codex --profile v01-check` and complete Pi's device-code flow. Exit with `/quit`.
-2. In a fresh process, run `./pi-pod run /path/to/empty-dir --workspace bind --auth v01-check --prompt "Reply only: AUTH_OK" --timeout 60`; confirm it does not ask to log in again.
-3. Repeat after provider refresh/expiry timing permits.
-4. For every intended OpenCode subscription provider, repeat the login with `--agent opencode --provider <provider-id>` and the task with `--agent opencode --auth v01-check`. Use a distinct profile name for each provider, replacing `v01-check` in both commands.
-
-Record only provider name, command exit status, and whether reuse/refresh succeeded. Do not inspect, print, or copy tokens, device codes, or redirect URLs.
+The library neither loads CLI defaults nor supports host authentication for headless work. It has no generic API-key environment forwarding option.

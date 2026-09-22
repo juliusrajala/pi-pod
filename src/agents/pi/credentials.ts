@@ -1,11 +1,11 @@
 import type { CredentialCodec } from "../contract.ts";
 
-/** Pi profiles deliberately support only the reviewed Codex OAuth shape. */
+/** Pi host authentication deliberately supports only the reviewed Codex OAuth shape. */
 export const piCredentialCodec: CredentialCodec = {
   assertProvider(provider) {
     if (provider !== "openai-codex") {
       throw new Error(
-        "Pi credential profiles currently support only openai-codex; use --auth none with an explicit API-key environment variable for another provider.",
+        "Pi host authentication supports only openai-codex. Pi API-token profiles are not advertised.",
       );
     }
   },

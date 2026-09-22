@@ -2,7 +2,11 @@ import { Crust } from "@crustjs/core";
 import { resolve } from "node:path";
 import { loadCliPreferences } from "../../config/load.ts";
 import { maxPromptBytes } from "../../execution/prompt.ts";
-import { runAgent } from "../../execution/run.ts";
+import { loadCliAuthDefault } from "../../auth/defaults.ts";
+import { loadAuthProfile } from "../../auth/profiles.ts";
+import { runCliAgent } from "../../execution/run.ts";
+import { resolveRunPolicy } from "../../execution/policy.ts";
+import { validIdentifier } from "../../state/identifiers.ts";
 import {
   agents,
   workspaceModes,
@@ -21,7 +25,6 @@ const commonAgentFlags = {
   agent: { type: "string", choices: agents },
   workspace: { type: "string", choices: workspaceModes },
   auth: { type: "string" },
-  env: { type: "string", multiple: true },
   image: { type: "string" },
   network: { type: "string", choices: ["pasta", "none"] as const },
   "relabel-workspace": { type: "boolean" },
@@ -37,7 +40,6 @@ type CommonAgentFlags = {
   agent?: string;
   workspace?: string;
   auth?: string;
-  env?: string[];
   image?: string;
   network?: string;
   "relabel-workspace"?: boolean;
@@ -109,10 +111,11 @@ async function launchAgent(input: {
     configPath: input.flags.config,
     noConfig: input.flags["skip-config"] === true,
   });
-  if (await reexecInDelegatedScope(process.argv.slice(2))) return;
-  const interrupt = interruptSignal();
-  try {
-    const result = await runAgent({
+  // Keep caller-controlled validation pure: do not create/read auth state or
+  // credentials until limits, network, model preferences, and syntax pass.
+  validateCliAuthSyntax(input.flags.auth);
+  resolveRunPolicy(
+    {
       agent: input.flags.agent as AgentName | undefined,
       mode: input.mode,
       workspace: input.workspace,
@@ -120,8 +123,30 @@ async function launchAgent(input: {
       prompt: input.prompt,
       preferences,
       agentArgs: input.agentArgs,
-      environment: input.flags.env ?? [],
-      authProfile: input.flags.auth,
+      auth: { type: "host" },
+      image: input.flags.image,
+      limits: resourceLimits(input.flags),
+      timeoutMs: input.timeoutMs,
+      network: input.flags.network as "pasta" | "none" | undefined,
+      relabelWorkspace: input.flags["relabel-workspace"] === true,
+    } as never,
+    { allowHeadlessHostAuth: true },
+  );
+  if (await reexecInDelegatedScope(process.argv.slice(2))) return;
+  const interrupt = interruptSignal();
+  try {
+    const result = await runCliAgent({
+      agent: input.flags.agent as AgentName | undefined,
+      mode: input.mode,
+      workspace: input.workspace,
+      workspaceMode: input.flags.workspace as WorkspaceMode | undefined,
+      prompt: input.prompt,
+      preferences,
+      agentArgs: input.agentArgs,
+      auth: await resolveCliAuth(
+        (input.flags.agent as AgentName | undefined) ?? "pi",
+        input.flags.auth,
+      ),
       image: input.flags.image,
       limits: resourceLimits(input.flags),
       timeoutMs: input.timeoutMs,
@@ -144,6 +169,28 @@ function resourceLimits(flags: CommonAgentFlags): Partial<ResourceLimits> {
     ...(flags["workspace-bytes"] === undefined ? {} : { workspaceBytes: flags["workspace-bytes"] }),
     ...(flags["temporary-bytes"] === undefined ? {} : { temporaryBytes: flags["temporary-bytes"] }),
   };
+}
+
+function validateCliAuthSyntax(requested: string | undefined): void {
+  if (requested === undefined || requested === "host") return;
+  if (requested === "none") throw new Error('"none" is not an authentication source.');
+  validIdentifier(requested, "Auth profile");
+}
+
+async function resolveCliAuth(
+  agent: AgentName,
+  requested: string | undefined,
+): Promise<{ type: "host" } | { type: "profile"; name: string }> {
+  if (requested === undefined) {
+    const selected = await loadCliAuthDefault(agent);
+    return selected === "host" ? { type: "host" } : selected;
+  }
+  if (requested === "host") return { type: "host" };
+  if (requested === "none") throw new Error('"none" is not an authentication source.');
+  if (!requested) throw new Error("--auth requires host or a profile name.");
+  // Validate ownership/version before delegation, workspace, or Podman work.
+  await loadAuthProfile(agent, requested);
+  return { type: "profile", name: requested };
 }
 
 async function readPrompt(
@@ -181,8 +228,7 @@ function reportRunResult(result: RunResult): void {
     process.exitCode = 1;
     return;
   }
-  const authRequiresRecovery =
-    result.auth.reconciliation === "retained" || result.auth.lock === "release-failed";
+  const authRequiresRecovery = result.auth.reconciliation === "retained";
   if (authRequiresRecovery) {
     console.error(
       `Authentication persistence requires recovery: ${result.auth.error ?? result.auth.lock}.`,

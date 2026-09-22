@@ -63,16 +63,6 @@ export const piDefinition: AgentDefinition = {
             "",
           ]
         : promptFileCommand(promptPath, agentArgs),
-  loginCommand: () => [
-    "pi",
-    "--no-session",
-    "--no-extensions",
-    "--no-skills",
-    "--no-prompt-templates",
-    "--no-themes",
-  ],
-  loginInstructions: (provider) =>
-    `In Pi, run /login and choose ${provider}. For ChatGPT/Codex, choose device-code login to avoid a container callback port.`,
 };
 
 function hasAnyFlag(args: readonly string[], names: readonly string[]): boolean {

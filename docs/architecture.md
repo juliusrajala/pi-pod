@@ -18,7 +18,9 @@ cli / trusted library input
   -> execution finalization and outcome
 ```
 
-`utils/` has no domain policy. `state/` owns wrapper control paths and guarded deletion. `resources/` owns limits and storage monitoring. Agent adapters describe native behavior only; they do not launch host commands or supply Podman policy. `container/` owns the visible hardened argv, mounts, environment forwarding, preflight, and lifecycle. `execution/` composes domains; `cli/` adapts user input and never supplies policy to lower domains.
+The intended boundary keeps `utils/` domain-neutral and puts wrapper control paths and guarded deletion in `state/`. That separation is not yet complete: state-root and deletion policy still live in `src/utils/fs.ts`. Resource validation and monitoring live in `resources/`, while resource defaults and the headless timeout still live in `container/image.ts`. See [Plan 05's current checkpoint](plans/05-domain-layout-and-navigation.md#current-checkpoint) for the remaining ownership and dependency work.
+
+Agent adapters describe native behavior only; they do not launch host commands or supply Podman policy. `container/` owns the visible hardened argv, mounts, environment forwarding, preflight, and lifecycle. `execution/` composes domains; `cli/` adapts user input.
 
 ## Task-oriented index
 
@@ -29,8 +31,8 @@ cli / trusted library input
 | How do I add an agent?                        | `src/agents/contract.ts`, `src/agents/registry.ts`                     |
 | Which native configuration is permitted?      | `src/config/load.ts`, selected agent definition                        |
 | What crosses the container boundary?          | `src/container/args.ts`, `src/container/lifecycle.ts`                  |
-| Who owns credentials/recovery?                | `src/auth/staging.ts`, `src/auth/lock.ts`, `src/auth/recovery.ts`      |
-| Can this directory be deleted?                | `src/workspace/remove.ts`, `src/workspace/runs.ts`, `src/state/`       |
+| Who owns credentials/recovery?                | `src/auth/profiles.ts`, `src/auth/defaults.ts`, `src/auth/staging.ts`  |
+| Can this directory be deleted?                | `src/workspace/remove.ts`, `src/workspace/runs.ts`, `src/utils/fs.ts`  |
 | Where are budgets enforced?                   | `src/resources/limits.ts`, `src/resources/storage.ts`                  |
 | How does host startup remain safe?            | `scripts/dev-launcher`, `src/cli/bootstrap.ts`, `src/workspace/git.ts` |
 
@@ -38,12 +40,12 @@ The package-root `index.ts` is the stable public library surface. `src/cli.ts` i
 
 ## Lifecycle ownership
 
-The visible run sequence is resolve/validate → prepare → stage → execute → establish cleanup evidence → finalize owned resources → return outcome. Container removal is established before credential reconciliation, stage deletion, lock release, or clone-reservation release because a live container may still write or mount those resources.
+The visible run sequence is resolve/validate → prepare → stage → execute → establish cleanup evidence → finalize owned resources → return outcome. Container removal is established before stage deletion or clone-reservation release because a live container may still write or mount those resources.
 
-| Outcome                                     | Workspace                                   | Auth/resource stages                                  |
-| ------------------------------------------- | ------------------------------------------- | ----------------------------------------------------- |
-| Success/nonzero/abort/timeout after removal | Bind untouched; clone retained and released | Reconcile profile or discard host stage, then cleanup |
-| Setup failure before launch                 | Bind untouched; acquired clone discarded    | Release acquired resources                            |
-| Removal or reconciliation failure           | Clone/reservation retained                  | Retain private stage and report recovery requirement  |
+| Outcome                                     | Workspace                                   | Auth/resource stages                                 |
+| ------------------------------------------- | ------------------------------------------- | ---------------------------------------------------- |
+| Success/nonzero/abort/timeout after removal | Bind untouched; clone retained and released | Discard source-only auth stage, then cleanup         |
+| Setup failure before launch                 | Bind untouched; acquired clone discarded    | Release acquired resources                           |
+| Removal or stage-cleanup failure            | Clone/reservation retained                  | Retain private stage and report recovery requirement |
 
 Layout/dependency rules are reviewed manually with this map at migration changes; this project intentionally has no architecture-policing toolchain.

@@ -1,5 +1,4 @@
 import {
-  acquireAuthProfile,
   loadAuthProfile,
   recoverHostAuthStages,
   recoverPendingAuthStages,
@@ -7,9 +6,10 @@ import {
   stageHostAuth,
 } from "../auth/recovery.ts";
 import { agentDefinition } from "../agents/registry.ts";
-import type { AgentName, AuthOutcome, RunMode } from "./types.ts";
+import type { AgentName } from "../agents/registry.ts";
+import type { AuthOutcome } from "./types.ts";
 
-export type CredentialSource = "host" | "profile" | "none";
+export type CredentialSource = "host" | "profile";
 
 export type StagedCredential = {
   agentStateDirectory: string;
@@ -17,57 +17,18 @@ export type StagedCredential = {
   cleanup: () => Promise<void>;
 };
 
-/** Validate the credential policy before workspace, state, or Podman side effects. */
-export function resolveCredentialSource(input: {
-  agent: AgentName;
-  mode: RunMode;
-  authProfile?: string | "none";
-}): { source: CredentialSource; profileName?: string } {
-  const defaultSource =
-    input.mode === "interactive"
-      ? agentDefinition(input.agent).hostAuth === undefined
-        ? undefined
-        : "host"
-      : "default";
-  const requested = input.authProfile ?? defaultSource;
-  if (requested === undefined) {
-    throw new Error(
-      `${input.agent} has no reviewed host-auth capability; use --auth <profile> or --auth none with an explicit API-key environment variable.`,
-    );
-  }
-  if (requested === "host") {
-    if (input.mode !== "interactive") {
-      throw new Error("Host credentials are available only to interactive dev sessions.");
-    }
-    return { source: "host" };
-  }
-  return requested === "none" ? { source: "none" } : { source: "profile", profileName: requested };
-}
-
-/** Acquire, recover, and stage the explicitly selected wrapper-owned source. */
+/** Stage a previously resolved source. Profile state is source-only and unlocked. */
 export async function stageCredentialSource(input: {
   agent: AgentName;
   source: CredentialSource;
   profileName?: string;
   containerName: string;
   ownershipToken: string;
-  /** Register immediately so failed stage recovery still releases the lock. */
-  onProfileLock?: (release: () => Promise<void>) => void;
-}): Promise<{
-  stage?: StagedCredential;
-  release?: () => Promise<void>;
-  outcome: AuthOutcome;
-}> {
-  if (input.source === "none") {
-    return { outcome: { source: "none", reconciliation: "not-used", lock: "not-used" } };
-  }
+}): Promise<{ stage: StagedCredential; outcome: AuthOutcome }> {
   if (input.source === "host") {
     const hostAuth = agentDefinition(input.agent).hostAuth;
-    if (hostAuth === undefined) {
-      throw new Error(
-        `${input.agent} does not support interactive host authentication; use --auth <profile> or --auth none with an explicit API-key environment variable.`,
-      );
-    }
+    if (hostAuth === undefined)
+      throw new Error(`${input.agent} does not support host authentication.`);
     await recoverHostAuthStages(hostAuth.source);
     return {
       stage: await stageHostAuth(hostAuth.source, {
@@ -77,19 +38,15 @@ export async function stageCredentialSource(input: {
       outcome: { source: "host", reconciliation: "not-used", lock: "not-used" },
     };
   }
-  const profile = await loadAuthProfile(input.agent, input.profileName!);
-  const lock = await acquireAuthProfile(profile, {
-    containerName: input.containerName,
-    ownershipToken: input.ownershipToken,
-  });
-  input.onProfileLock?.(lock.release);
+  if (input.profileName === undefined)
+    throw new Error("Profile authentication requires a profile name.");
+  const profile = await loadAuthProfile(input.agent, input.profileName);
   await recoverPendingAuthStages(profile);
   return {
     stage: await stageAuthProfile(profile, {
       containerName: input.containerName,
       ownershipToken: input.ownershipToken,
     }),
-    release: lock.release,
-    outcome: { source: "profile", reconciliation: "retained", lock: "retained" },
+    outcome: { source: "profile", reconciliation: "not-used", lock: "not-used" },
   };
 }

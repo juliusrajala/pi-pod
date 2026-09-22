@@ -1,5 +1,6 @@
 import { stagePrompt, type PromptStage } from "./prompt.ts";
 import { maxAuthStageBytes } from "../auth/staging.ts";
+import { loadAuthProfile } from "../auth/profiles.ts";
 import { runPodmanContainer } from "../container/lifecycle.ts";
 import {
   assertDevResourceSource,
@@ -13,7 +14,13 @@ import {
   buildPodmanRunArgs,
   podmanEnvironment,
 } from "../container/args.ts";
-import type { AgentName, AuthOutcome, RunAgentOptions, RunResult } from "./types.ts";
+import type {
+  AuthenticationSource,
+  AuthOutcome,
+  RunAgentOptions,
+  RunMode,
+  RunResult,
+} from "./types.ts";
 
 import { assertWorkspaceWithinLimit, monitorWorkspaceUsage } from "../resources/storage.ts";
 import { prepareWorkspace } from "../workspace/prepare.ts";
@@ -21,8 +28,26 @@ import { discardUnlaunchedRun, releaseRunReservation } from "../workspace/runs.t
 import { stageCredentialSource, type StagedCredential } from "./credentials.ts";
 import { resolveRunPolicy } from "./policy.ts";
 
+export type CliRunAgentOptions = Omit<RunAgentOptions, "mode" | "auth"> & {
+  mode: RunMode;
+  auth: AuthenticationSource;
+};
+
+/** Public library entrypoint: headless use cannot resolve host/default policy. */
 export async function runAgent(input: RunAgentOptions): Promise<RunResult> {
-  const policy = resolveRunPolicy(input);
+  return executeAgent(input, false);
+}
+
+/** Internal CLI adapter entrypoint. It is deliberately not exported from index.ts. */
+export async function runCliAgent(input: CliRunAgentOptions): Promise<RunResult> {
+  return executeAgent(input as RunAgentOptions, true);
+}
+
+async function executeAgent(
+  input: RunAgentOptions,
+  allowHeadlessHostAuth: boolean,
+): Promise<RunResult> {
+  const policy = resolveRunPolicy(input, { allowHeadlessHostAuth });
   const {
     agent,
     definition,
@@ -53,19 +78,32 @@ export async function runAgent(input: RunAgentOptions): Promise<RunResult> {
   let authStage: StagedCredential | undefined;
   let promptStage: PromptStage | undefined;
   let devResources: DevResourceStage | undefined;
-  let releaseAuth: (() => Promise<void>) | undefined;
   let monitors: Array<ReturnType<typeof monitorWorkspaceUsage>> = [];
   let containerRemoved = false;
   let cleanupError: string | undefined;
-  let retainAuthProfile = false;
   let reservation: RunResult["cleanup"]["reservation"] = "not-owned";
   let reservationError: string | undefined;
-  let authOutcome: AuthOutcome = { source: "none", reconciliation: "not-used", lock: "not-used" };
+  let authOutcome: AuthOutcome = {
+    source: policy.credentialSource.source,
+    reconciliation: "not-used",
+    lock: "not-used",
+  };
   let result: RunResult | undefined;
 
   try {
-    // prepare workspace
+    // Validate a named profile before workspace, host credential, or Podman side effects.
     controller.signal.throwIfAborted();
+    const selectedProvider =
+      credentialSource.source === "profile"
+        ? (await loadAuthProfile(agent, credentialSource.profileName!)).provider
+        : definition.hostAuth?.provider;
+    if (selectedProvider === undefined) throw new Error(`${agent} has no selected auth provider.`);
+    assertEffectiveProviderMatches(
+      selectedProvider,
+      agent,
+      input.preferences,
+      input.agentArgs ?? [],
+    );
     await assertPodmanAvailable();
     workspace = await prepareWorkspace({
       path: input.workspace,
@@ -92,12 +130,8 @@ export async function runAgent(input: RunAgentOptions): Promise<RunResult> {
       profileName: credentialSource.profileName,
       containerName,
       ownershipToken,
-      onProfileLock: (release) => {
-        releaseAuth = release;
-      },
     });
     authStage = credentials.stage;
-    releaseAuth = credentials.release;
     authOutcome = credentials.outcome;
     if (authStage !== undefined) {
       await assertMountSource(authStage.agentStateDirectory);
@@ -139,7 +173,7 @@ export async function runAgent(input: RunAgentOptions): Promise<RunResult> {
       extensionPackageMounts: devResources?.mounts,
       promptFile: promptStage?.file,
       agentArgs,
-      environment: input.environment ?? [],
+      environment: [],
       image,
       containerName,
       ownershipToken,
@@ -155,7 +189,7 @@ export async function runAgent(input: RunAgentOptions): Promise<RunResult> {
       args,
       name: containerName,
       ownershipToken,
-      environment: podmanEnvironment(input.environment ?? []),
+      environment: podmanEnvironment([]),
       signal: controller.signal,
       output: input.output,
       onStarted: () => {
@@ -272,11 +306,10 @@ export async function runAgent(input: RunAgentOptions): Promise<RunResult> {
     }
     if (authStage !== undefined) {
       if (launched && !containerRemoved) {
-        retainAuthProfile = authOutcome.source === "profile";
         authOutcome = {
           source: authOutcome.source,
           reconciliation: "retained",
-          lock: authOutcome.source === "profile" ? "retained" : "not-used",
+          lock: "not-used",
           error: "Container removal was not verified.",
         };
         input.onDiagnostic?.(
@@ -286,30 +319,17 @@ export async function runAgent(input: RunAgentOptions): Promise<RunResult> {
         try {
           await authStage.reconcile();
           await authStage.cleanup();
-          authOutcome =
-            authOutcome.source === "profile"
-              ? { source: "profile", reconciliation: "persisted", lock: "retained" }
-              : { source: "host", reconciliation: "not-used", lock: "not-used" };
+          authOutcome = { ...authOutcome, reconciliation: "not-used", lock: "not-used" };
         } catch (error) {
           const message = errorMessage(error);
           authOutcome = {
             source: authOutcome.source,
             reconciliation: "retained",
-            lock: authOutcome.source === "profile" ? "retained" : "not-used",
+            lock: "not-used",
             error: message,
           };
           input.onDiagnostic?.(`Authentication update was retained for recovery: ${message}`);
         }
-      }
-    }
-    if (!retainAuthProfile && releaseAuth !== undefined) {
-      try {
-        await releaseAuth();
-        if (authOutcome.lock !== "not-used") authOutcome = { ...authOutcome, lock: "released" };
-      } catch (error) {
-        const message = errorMessage(error);
-        authOutcome = { ...authOutcome, lock: "release-failed", error: message };
-        input.onDiagnostic?.(`Could not release authentication profile: ${message}`);
       }
     }
     if (result !== undefined) {
@@ -325,6 +345,50 @@ export async function runAgent(input: RunAgentOptions): Promise<RunResult> {
     if (timeout !== undefined) clearTimeout(timeout);
     input.signal?.removeEventListener("abort", onAbort);
   }
+}
+
+function assertEffectiveProviderMatches(
+  selectedProvider: string,
+  agent: RunAgentOptions["agent"],
+  preferences: RunAgentOptions["preferences"],
+  agentArgs: readonly string[],
+): void {
+  const effective =
+    nativeProviderOverride(agent ?? "pi", agentArgs) ?? preferences?.model?.provider;
+  if (effective !== undefined && effective !== selectedProvider) {
+    throw new Error(
+      `Selected model provider ${effective} does not match authentication provider ${selectedProvider}.`,
+    );
+  }
+}
+
+/** Parse only reviewed provider-selecting native flags; unknown syntax is rejected. */
+function nativeProviderOverride(
+  agent: "pi" | "opencode",
+  args: readonly string[],
+): string | undefined {
+  const flags = agent === "pi" ? ["--provider"] : ["--model", "-m"];
+  let selected: string | undefined;
+  for (let index = 0; index < args.length; index++) {
+    const argument = args[index]!;
+    for (const flag of flags) {
+      let value: string | undefined;
+      if (argument === flag) value = args[++index];
+      else if (argument.startsWith(`${flag}=`)) value = argument.slice(flag.length + 1);
+      else continue;
+      if (value === undefined || value.length === 0)
+        throw new Error(`${flag} requires a provider value when authentication is selected.`);
+      if (agent === "opencode" && !value.includes("/")) {
+        throw new Error(`Cannot validate provider selected by ${flag}.`);
+      }
+      const provider = agent === "pi" ? value : value.split("/", 1)[0];
+      if (provider === undefined || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(provider)) {
+        throw new Error(`Cannot validate provider selected by ${flag}.`);
+      }
+      selected = provider;
+    }
+  }
+  return selected;
 }
 
 function errorMessage(error: unknown): string {

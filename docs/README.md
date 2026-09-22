@@ -23,4 +23,4 @@ New to pi-pod? The [quick start](../README.md#quick-start) walks through your fi
 - [Architecture and lifecycle](architecture.md) — code navigation, startup, cleanup, and ownership.
 - [Development](development.md) — runtime setup, tests, release builds, and adding an agent.
 - [Plans](plans/README.md) — outstanding proposals and archived decisions, separate from supported behavior.
-- Adversarial reviews: [initial implementation](reviews/01-adversarial-review.md) and [current-state review and remediation checkpoint](reviews/02-current-state-adversarial-review.md).
+- Adversarial reviews: [initial implementation](reviews/01-adversarial-review.md), [current-state review and remediation checkpoint](reviews/02-current-state-adversarial-review.md), and [authentication model refactor](reviews/03-authentication-model-review.md).

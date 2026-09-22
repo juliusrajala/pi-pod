@@ -12,6 +12,7 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import packageManifest from "../package.json" with { type: "json" };
 import { auditedContainerfileSha256 } from "../src/cli/distribution.ts";
 const pinnedBun = "1.3.14";
 const targetName = "linux-x64";
@@ -31,7 +32,7 @@ async function buildRelease(argv: readonly string[]): Promise<void> {
     throw new Error(`Usage: bun run build:release -- --target ${targetName}`);
   }
 
-  const output = join(root, "dist", `pi-pod-${targetName}`);
+  const output = join(root, "dist", `pi-pod-${packageManifest.version}-${targetName}`);
   await requireDirectory(dirname(output));
   await requireAbsent(output);
 

@@ -1,97 +1,130 @@
-import { afterEach, beforeEach, expect, test } from "bun:test";
-import { lstat, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { afterEach, expect, test } from "bun:test";
+import { lstat, mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  acquireAuthProfile,
+  clearCliAuthDefault,
+  loadCliAuthDefault,
+  profileIsCliDefault,
+  setCliAuthDefault,
+} from "./defaults.ts";
+import {
   createAuthProfile,
   loadAuthProfile,
-  recoverAuthProfile,
+  removeAuthProfile,
+  updateAuthProfile,
+} from "./profiles.ts";
+import { withAuthManagement } from "./management.ts";
+import { readApiToken } from "./token-input.ts";
+import {
   recoverHostAuthStages,
-  removeAuthProfileLock,
+  recoverPendingAuthStages,
   stageAuthProfile,
   stageHostAuth,
-} from "./recovery.ts";
-import { maxAuthStageBytes } from "./staging.ts";
-import { assertWorkspaceWithinLimit } from "../resources/storage.ts";
+} from "./staging.ts";
 
-let stateRoot = "";
-let previousStateHome: string | undefined;
-
-beforeEach(async () => {
-  previousStateHome = Bun.env.XDG_STATE_HOME;
-  stateRoot = await mkdtemp(join(tmpdir(), "pi-pod-auth-"));
-  Bun.env.XDG_STATE_HOME = stateRoot;
-});
-
+let state: string | undefined;
 afterEach(async () => {
-  if (previousStateHome === undefined) delete Bun.env.XDG_STATE_HOME;
-  else Bun.env.XDG_STATE_HOME = previousStateHome;
-  await rm(stateRoot, { recursive: true, force: true });
+  if (state !== undefined) await rm(state, { recursive: true, force: true });
+  delete Bun.env.XDG_STATE_HOME;
+  state = undefined;
 });
 
-test("rejects a symlinked auth subtree even when its leaf would be user-owned", async () => {
-  const state = join(stateRoot, "pi-pod");
-  const outside = join(stateRoot, "outside");
-  await mkdir(state);
-  await mkdir(outside);
-  await symlink(outside, join(state, "auth"));
+async function isolatedState(): Promise<void> {
+  state = await mkdtemp(join(tmpdir(), "pi-pod-auth-"));
+  Bun.env.XDG_STATE_HOME = state;
+}
 
+test("only the supported provider-bound API-token profile can be created", async () => {
+  await isolatedState();
   await expect(
-    createAuthProfile({ agent: "pi", name: "default", provider: "openai-codex" }),
-  ).rejects.toThrow("escaped the wrapper-owned root");
-  expect(await Bun.file(join(outside, "pi", "default", "auth.json")).exists()).toBe(false);
+    createAuthProfile({ agent: "pi", name: "worker", provider: "openai-codex", token: "fake" }),
+  ).rejects.toThrow("do not support");
+  const profile = await createAuthProfile({
+    agent: "opencode",
+    name: "worker",
+    provider: "anthropic",
+    token: "fake-token",
+  });
+  await expect(
+    createAuthProfile({ agent: "opencode", name: "worker", provider: "anthropic", token: "other" }),
+  ).rejects.toThrow("already exists");
+  expect((await loadAuthProfile("opencode", "worker")).provider).toBe("anthropic");
+  const stage = await stageAuthProfile(profile);
+  await updateAuthProfile("opencode", "worker", "new-fake-token");
+  expect(await Bun.file(stage.authFile).text()).toContain("fake-token");
+  await stage.cleanup();
 });
 
-test("serializes concurrent creation of the same profile", async () => {
-  const results = await Promise.allSettled([
-    createAuthProfile({ agent: "opencode", name: "shared", provider: "openai" }),
-    createAuthProfile({ agent: "opencode", name: "shared", provider: "anthropic" }),
-  ]);
-
-  expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
-  expect(results.filter((result) => result.status === "rejected")).toHaveLength(1);
-  const stored = await loadAuthProfile("opencode", "shared");
-  expect(["openai", "anthropic"]).toContain(stored.provider);
+test("token input refuses non-terminal input before changing terminal mode", async () => {
+  if (process.stdin.isTTY) return;
+  await expect(readApiToken()).rejects.toThrow("interactive controlling terminal");
 });
 
-test("stages only the selected host Pi credential and never writes it back", async () => {
+test("profile creation refuses a pre-existing credential instead of reporting success", async () => {
+  await isolatedState();
+  const directory = join(state!, "pi-pod", "auth", "opencode", "partial");
+  await mkdir(directory, { recursive: true, mode: 0o700 });
+  await writeFile(join(directory, "auth.json"), '{"anthropic":{"type":"api","key":"old"}}\n', {
+    mode: 0o600,
+  });
+  await expect(
+    createAuthProfile({ agent: "opencode", name: "partial", provider: "anthropic", token: "new" }),
+  ).rejects.toThrow("already has a credential file");
+  expect(await Bun.file(join(directory, "profile.json")).exists()).toBe(false);
+  expect(await readFile(join(directory, "auth.json"), "utf8")).toContain("old");
+});
+
+test("profile management mutations serialize instead of racing", async () => {
+  await isolatedState();
+  await createAuthProfile({
+    agent: "opencode",
+    name: "worker",
+    provider: "anthropic",
+    token: "fake",
+  });
+  await withAuthManagement(async () => {
+    await expect(updateAuthProfile("opencode", "worker", "replacement")).rejects.toThrow(
+      "management is already in progress",
+    );
+  });
+});
+
+test("profile removal refuses unrecognized metadata", async () => {
+  await isolatedState();
+  const directory = join(state!, "pi-pod", "auth", "opencode", "unknown");
+  await mkdir(directory, { recursive: true, mode: 0o700 });
+  await writeFile(join(directory, "profile.json"), '{"version":99}\n', { mode: 0o600 });
+  await expect(removeAuthProfile("opencode", "unknown")).rejects.toThrow(
+    "Invalid auth profile metadata",
+  );
+  expect((await lstat(directory)).isDirectory()).toBe(true);
+});
+
+test("host Pi staging filters the selected credential and never writes back", async () => {
+  await isolatedState();
   const previousHome = Bun.env.HOME;
-  const home = join(stateRoot, "home");
+  const home = join(state!, "home");
   const hostAuth = join(home, ".pi", "agent", "auth.json");
+  const selected = crypto.randomUUID();
   const source = JSON.stringify({
     "openai-codex": {
       type: "oauth",
-      access: "host-access",
-      refresh: "host-refresh",
+      access: selected,
+      refresh: selected,
       expires: 1_900_000_000_000,
     },
-    unrelated: { type: "api_key", key: "must-not-stage" },
+    unrelated: { type: "api", key: crypto.randomUUID() },
   });
   try {
     Bun.env.HOME = home;
     await mkdir(join(home, ".pi", "agent"), { recursive: true });
     await writeFile(hostAuth, source);
     const stage = await stageHostAuth("host-pi");
-    expect(JSON.parse(await readFile(stage.authFile, "utf8"))).toEqual({
-      "openai-codex": {
-        type: "oauth",
-        access: "host-access",
-        refresh: "host-refresh",
-        expires: 1_900_000_000_000,
-      },
-    });
-    await writeFile(
-      stage.authFile,
-      JSON.stringify({
-        "openai-codex": {
-          type: "oauth",
-          access: "changed",
-          refresh: "changed",
-          expires: 1_900_000_000_001,
-        },
-      }),
-    );
+    expect(Object.keys(JSON.parse(await readFile(stage.authFile, "utf8")))).toEqual([
+      "openai-codex",
+    ]);
+    await writeFile(stage.authFile, "{}\n", { mode: 0o600 });
     await stage.reconcile();
     await stage.cleanup();
     expect(await readFile(hostAuth, "utf8")).toBe(source);
@@ -101,137 +134,23 @@ test("stages only the selected host Pi credential and never writes it back", asy
   }
 });
 
-test("allows concurrent host stages and preserves the live owner's startup stage", async () => {
-  const previousHome = Bun.env.HOME;
-  const home = join(stateRoot, "home");
-  const hostAuth = join(home, ".pi", "agent", "auth.json");
-  try {
-    Bun.env.HOME = home;
-    await mkdir(join(home, ".pi", "agent"), { recursive: true });
-    await writeFile(
-      hostAuth,
-      JSON.stringify({
-        "openai-codex": {
-          type: "oauth",
-          access: "fixture-access",
-          refresh: "fixture-refresh",
-          expires: 1_900_000_000_000,
-        },
-      }),
-    );
-
-    const first = await stageHostAuth("host-pi", {
-      containerName: "pi-pod-first",
-      ownershipToken: "first-token",
-    });
-    const second = await stageHostAuth("host-pi", {
-      containerName: "pi-pod-second",
-      ownershipToken: "second-token",
-    });
-    try {
-      expect(first.directory).not.toBe(second.directory);
-      expect(first.agentStateDirectory).not.toBe(second.agentStateDirectory);
-      expect(JSON.parse(await readFile(join(first.directory, "stage.json"), "utf8")).pid).toBe(
-        process.pid,
-      );
-
-      // Both stages belong to this live process, even though neither container
-      // exists yet. Recovery must not mistake that startup interval for an
-      // orphan, and host auth must not acquire a shared profile lock.
-      await recoverHostAuthStages("host-pi");
-      expect((await lstat(first.directory)).isDirectory()).toBe(true);
-      expect((await lstat(second.directory)).isDirectory()).toBe(true);
-    } finally {
-      await first.cleanup();
-      await second.cleanup();
-    }
-  } finally {
-    if (previousHome === undefined) delete Bun.env.HOME;
-    else Bun.env.HOME = previousHome;
-  }
-});
-
-test("skips an active host stage and removes a proven orphan", async () => {
-  const previousHome = Bun.env.HOME;
-  const home = join(stateRoot, "home");
-  const hostAuth = join(home, ".pi", "agent", "auth.json");
-  try {
-    Bun.env.HOME = home;
-    await mkdir(join(home, ".pi", "agent"), { recursive: true });
-    await writeFile(
-      hostAuth,
-      JSON.stringify({
-        "openai-codex": {
-          type: "oauth",
-          access: "fixture-access",
-          refresh: "fixture-refresh",
-          expires: 1_900_000_000_000,
-        },
-      }),
-    );
-    const active = await stageHostAuth("host-pi", {
-      containerName: "pi-pod-active",
-      ownershipToken: "active-token",
-    });
-    const orphan = await stageHostAuth("host-pi");
-    try {
-      const deadPid = 2_147_483_647;
-      await writeFile(
-        join(active.directory, "stage.json"),
-        JSON.stringify({
-          version: 1,
-          agent: "pi",
-          name: "host-pi",
-          provider: "openai-codex",
-          containerName: "pi-pod-active",
-          ownershipToken: "active-token",
-          pid: deadPid,
-          source: "host-pi",
-        }),
-      );
-      await writeFile(
-        join(orphan.directory, "stage.json"),
-        JSON.stringify({
-          version: 1,
-          agent: "pi",
-          name: "host-pi",
-          provider: "openai-codex",
-          containerName: null,
-          ownershipToken: null,
-          pid: deadPid,
-          source: "host-pi",
-        }),
-      );
-
-      await withExistingContainer("pi-pod-active", "active-token", async () => {
-        await recoverHostAuthStages("host-pi");
-      });
-      expect((await lstat(active.directory)).isDirectory()).toBe(true);
-      await expect(lstat(orphan.directory)).rejects.toMatchObject({ code: "ENOENT" });
-    } finally {
-      await active.cleanup();
-      await orphan.cleanup();
-    }
-  } finally {
-    if (previousHome === undefined) delete Bun.env.HOME;
-    else Bun.env.HOME = previousHome;
-  }
-});
-
-test("stages only the selected host OpenCode OpenAI credential and never writes it back", async () => {
+test("host OpenCode staging filters the selected credential and never writes back", async () => {
+  await isolatedState();
   const previousDataHome = Bun.env.XDG_DATA_HOME;
-  const dataHome = join(stateRoot, "host-data");
+  const dataHome = join(state!, "data");
   const hostAuth = join(dataHome, "opencode", "auth.json");
-  const source = redactedOpenCodeHostAuthDocument();
+  const selected = crypto.randomUUID();
+  const source = JSON.stringify({
+    openai: { type: "oauth", access: selected, refresh: selected, expires: 1_900_000_000_000 },
+    unrelated: { type: "api", key: crypto.randomUUID() },
+  });
   try {
     Bun.env.XDG_DATA_HOME = dataHome;
     await mkdir(join(dataHome, "opencode"), { recursive: true });
     await writeFile(hostAuth, source);
     const stage = await stageHostAuth("host-opencode");
-    const staged = JSON.parse(await readFile(stage.authFile, "utf8"));
-    expect(Object.keys(staged)).toEqual(["openai"]);
-    expect(staged.openai.type).toBe("oauth");
-    await writeFile(stage.authFile, "{}\n");
+    expect(Object.keys(JSON.parse(await readFile(stage.authFile, "utf8")))).toEqual(["openai"]);
+    await writeFile(stage.authFile, "{}\n", { mode: 0o600 });
     await stage.reconcile();
     await stage.cleanup();
     expect(await readFile(hostAuth, "utf8")).toBe(source);
@@ -241,279 +160,145 @@ test("stages only the selected host OpenCode OpenAI credential and never writes 
   }
 });
 
-function redactedOpenCodeHostAuthDocument(): string {
-  // Generate opaque values at runtime so fixtures cannot be mistaken for credentials.
-  const redacted = crypto.randomUUID();
-  return JSON.stringify({
-    openai: { type: "oauth", access: redacted, refresh: redacted, expires: 1_900_000_000_000 },
-    unrelated: { sentinel: true },
-  });
-}
-
-test("stages and persists only the selected Pi Codex credential", async () => {
-  const profile = await createAuthProfile({
-    agent: "pi",
-    name: "codex",
-    provider: "openai-codex",
-  });
-  const lock = await acquireAuthProfile(profile);
+test("host recovery preserves live startup stages and removes a dead orphan", async () => {
+  await isolatedState();
+  const previousHome = Bun.env.HOME;
+  const home = join(state!, "home");
   try {
-    const stage = await stageAuthProfile(profile);
+    Bun.env.HOME = home;
+    await mkdir(join(home, ".pi", "agent"), { recursive: true });
+    const selected = crypto.randomUUID();
     await writeFile(
-      stage.authFile,
+      join(home, ".pi", "agent", "auth.json"),
       JSON.stringify({
-        "openai-codex": {
-          type: "oauth",
-          access: "access-token",
-          refresh: "refresh-token",
-          expires: Date.now() + 60_000,
-          accountId: "account-id",
-        },
+        "openai-codex": { type: "oauth", access: selected, refresh: selected, expires: 1 },
       }),
     );
-    await stage.reconcile();
-    await stage.cleanup();
+    const live = await stageHostAuth("host-pi");
+    const orphan = await stageHostAuth("host-pi");
+    try {
+      await writeFile(
+        join(orphan.directory, "stage.json"),
+        JSON.stringify({
+          version: 2,
+          agent: "pi",
+          name: "host-pi",
+          provider: "openai-codex",
+          containerName: null,
+          ownershipToken: null,
+          pid: 2_147_483_647,
+          source: "host-pi",
+        }),
+        { mode: 0o600 },
+      );
+      await recoverHostAuthStages("host-pi");
+      expect((await lstat(live.directory)).isDirectory()).toBe(true);
+      await expect(lstat(orphan.directory)).rejects.toMatchObject({ code: "ENOENT" });
+    } finally {
+      await live.cleanup();
+      await orphan.cleanup();
+    }
   } finally {
-    await lock.release();
-  }
-
-  const stored = JSON.parse(
-    await readFile((await loadAuthProfile("pi", "codex")).authFile, "utf8"),
-  );
-  expect(stored).toEqual({
-    "openai-codex": {
-      type: "oauth",
-      access: "access-token",
-      refresh: "refresh-token",
-      expires: expect.any(Number),
-      accountId: "account-id",
-    },
-  });
-});
-
-test("persists the selected native OpenCode API credential", async () => {
-  const profile = await createAuthProfile({
-    agent: "opencode",
-    name: "default",
-    provider: "openai",
-  });
-  const lock = await acquireAuthProfile(profile);
-  try {
-    const stage = await stageAuthProfile(profile);
-    await writeFile(
-      stage.authFile,
-      JSON.stringify({
-        openai: { type: "api", key: "fixture-key", metadata: { region: "test" } },
-      }),
-    );
-    await stage.reconcile();
-    await stage.cleanup();
-  } finally {
-    await lock.release();
-  }
-
-  const stored = JSON.parse(await readFile(profile.authFile, "utf8"));
-  expect(stored).toEqual({
-    openai: { type: "api", key: "fixture-key", metadata: { region: "test" } },
-  });
-});
-
-test("rejects unrelated providers in a wrapper-owned credential profile", async () => {
-  const profile = await createAuthProfile({
-    agent: "opencode",
-    name: "isolated",
-    provider: "openai",
-  });
-  await writeFile(
-    profile.authFile,
-    JSON.stringify({
-      openai: { type: "api", key: "fixture-key" },
-      anthropic: { type: "api", key: "must-not-stage" },
-    }),
-  );
-  await expect(stageAuthProfile(profile)).rejects.toThrow(
-    "Credential contains unsupported fields.",
-  );
-});
-
-test("rejects unsupported credential fields instead of copying them back", async () => {
-  const profile = await createAuthProfile({
-    agent: "opencode",
-    name: "default",
-    provider: "openai",
-  });
-  const lock = await acquireAuthProfile(profile);
-  try {
-    const stage = await stageAuthProfile(profile);
-    await writeFile(
-      stage.authFile,
-      JSON.stringify({
-        openai: { type: "api", key: "fixture-key", injected: "no" },
-        anthropic: { type: "api", key: "must-not-persist" },
-      }),
-    );
-    await expect(stage.reconcile()).rejects.toThrow("Credential contains unsupported fields.");
-  } finally {
-    await lock.release();
+    if (previousHome === undefined) delete Bun.env.HOME;
+    else Bun.env.HOME = previousHome;
   }
 });
 
-test("bounds writable native auth staging separately from workspace storage", async () => {
+test("profile stages are independent and discard native writes", async () => {
+  await isolatedState();
   const profile = await createAuthProfile({
-    agent: "pi",
-    name: "bounded",
-    provider: "openai-codex",
+    agent: "opencode",
+    name: "worker",
+    provider: "anthropic",
+    token: "fake-token",
+  });
+  const first = await stageAuthProfile(profile);
+  const second = await stageAuthProfile(profile);
+  expect(first.directory).not.toBe(second.directory);
+  await writeFile(first.authFile, '{"anthropic":{"type":"api","key":"changed"}}\n', {
+    mode: 0o600,
+  });
+  await first.cleanup();
+  await second.cleanup();
+  expect(await Bun.file(profile.authFile).text()).toContain("fake-token");
+});
+
+test("orphaned profile stages are discarded without writing back", async () => {
+  await isolatedState();
+  const profile = await createAuthProfile({
+    agent: "opencode",
+    name: "worker",
+    provider: "anthropic",
+    token: "fake-token",
   });
   const stage = await stageAuthProfile(profile);
-  try {
-    await writeFile(
-      join(stage.agentStateDirectory, "native-cache"),
-      "x".repeat(maxAuthStageBytes + 1),
-    );
-    await expect(
-      assertWorkspaceWithinLimit(
-        stage.agentStateDirectory,
-        maxAuthStageBytes,
-        "Authentication staging",
-      ),
-    ).rejects.toThrow("Authentication staging storage limit");
-  } finally {
-    await stage.cleanup();
-  }
-});
-
-test("recovers a valid interrupted credential stage", async () => {
-  const profile = await createAuthProfile({
-    agent: "pi",
-    name: "default",
-    provider: "openai-codex",
+  await writeFile(stage.authFile, '{"anthropic":{"type":"api","key":"changed"}}\n', {
+    mode: 0o600,
   });
-  const lock = await acquireAuthProfile(profile);
-  try {
-    const stage = await stageAuthProfile(profile);
-    await writeFile(
-      stage.authFile,
-      JSON.stringify({
-        "openai-codex": {
-          type: "oauth",
-          access: "new-access",
-          refresh: "new-refresh",
-          expires: Date.now() + 60_000,
-        },
-      }),
-    );
-    // Simulate the wrapper being interrupted after the agent updated its
-    // isolated credential file but before reconciliation.
-  } finally {
-    await lock.release();
-  }
-
-  await recoverAuthProfile("pi", "default");
-  const stored = JSON.parse(await readFile(profile.authFile, "utf8"));
-  expect(stored["openai-codex"].access).toBe("new-access");
-});
-
-test("does not recover a stage while its named container still exists", async () => {
-  const profile = await createAuthProfile({
-    agent: "pi",
-    name: "default",
-    provider: "openai-codex",
-  });
-  const containerName = "pi-pod-stage-fixture";
-  const ownershipToken = "stage-token";
-  const lock = await acquireAuthProfile(profile, { containerName, ownershipToken });
-  try {
-    await stageAuthProfile(profile, { containerName, ownershipToken });
-  } finally {
-    await lock.release();
-  }
-
-  await withExistingContainer(containerName, ownershipToken, async () => {
-    await expect(recoverAuthProfile("pi", "default")).rejects.toThrow("still mounted by container");
-  });
-  // The fake only reports this exact name as present. Recovery must retain the
-  // stage and the known profile until that container is verified absent.
-  expect(await Bun.file(profile.authFile).text()).toBe("{}\n");
-  expect(await readdir(join(stateRoot, "pi-pod", "auth-staging"))).toHaveLength(1);
-});
-
-test("does not unlock a dead PID while its named container still exists", async () => {
-  const profile = await createAuthProfile({
-    agent: "pi",
-    name: "default",
-    provider: "openai-codex",
-  });
-  const containerName = "pi-pod-auth-fixture";
-  const ownershipToken = "auth-token";
-  const lock = await acquireAuthProfile(profile, { containerName, ownershipToken });
-  try {
-    await writeFile(
-      join(profile.directory, ".active", "owner.json"),
-      JSON.stringify({
-        version: 1,
-        pid: 2_147_483_647,
-        startedAt: new Date().toISOString(),
-        containerName,
-        ownershipToken,
-      }),
-    );
-    await withExistingContainer(containerName, ownershipToken, async () => {
-      await expect(removeAuthProfileLock("pi", "default")).rejects.toThrow(
-        "still mounted by container",
-      );
-    });
-  } finally {
-    await lock.release();
-  }
-});
-
-async function withExistingContainer(
-  name: string,
-  ownershipToken: string,
-  action: () => Promise<void>,
-): Promise<void> {
-  const bin = join(stateRoot, "bin");
-  const previousPath = Bun.env.PATH;
-  await mkdir(bin);
   await writeFile(
-    join(bin, "podman"),
-    `#!/bin/sh
-if test "$1" = container && test "$2" = exists && test "$3" = "${name}"; then exit 0; fi
-if test "$1" = container && test "$2" = inspect; then
-  printf '%s\\n' '{"io.pi-pod.managed":"true","io.pi-pod.owner":"${ownershipToken}"}'
-  exit 0
-fi
-exit 1
-`,
-    { mode: 0o700 },
+    join(stage.directory, "stage.json"),
+    JSON.stringify({
+      version: 2,
+      agent: "opencode",
+      name: "worker",
+      provider: "anthropic",
+      containerName: null,
+      ownershipToken: null,
+      pid: 2_147_483_647,
+      source: "profile",
+    }),
+    { mode: 0o600 },
   );
-  Bun.env.PATH = `${bin}:${previousPath ?? ""}`;
-  try {
-    await action();
-  } finally {
-    if (previousPath === undefined) delete Bun.env.PATH;
-    else Bun.env.PATH = previousPath;
-  }
-}
+  await recoverPendingAuthStages(profile);
+  await expect(lstat(stage.directory)).rejects.toMatchObject({ code: "ENOENT" });
+  expect(await readFile(profile.authFile, "utf8")).toContain("fake-token");
+});
 
-test("rejects command-backed keys and prevents parallel profile use", async () => {
-  const profile = await createAuthProfile({
-    agent: "pi",
-    name: "default",
-    provider: "openai-codex",
-  });
-  const lock = await acquireAuthProfile(profile);
-  await expect(acquireAuthProfile(profile)).rejects.toThrow("already in use");
-  try {
-    const stage = await stageAuthProfile(profile);
-    await writeFile(
-      stage.authFile,
-      JSON.stringify({
-        "openai-codex": { type: "api_key", key: "!host-command" },
-      }),
-    );
-    await expect(stage.reconcile()).rejects.toThrow("Invalid OpenAI Codex OAuth credential.");
-  } finally {
-    await lock.release();
+test("reserved profile identifiers are rejected consistently", async () => {
+  await isolatedState();
+  for (const name of ["host", "none"]) {
+    await expect(
+      createAuthProfile({ agent: "opencode", name, provider: "anthropic", token: "fake" }),
+    ).rejects.toThrow("reserved");
   }
+});
+
+test("CLI defaults are per agent, validate profile ownership, and clear to host", async () => {
+  await isolatedState();
+  await createAuthProfile({
+    agent: "opencode",
+    name: "worker",
+    provider: "anthropic",
+    token: "fake",
+  });
+  await setCliAuthDefault("opencode", "worker");
+  expect(await loadCliAuthDefault("opencode")).toEqual({ type: "profile", name: "worker" });
+  expect(await profileIsCliDefault("opencode", "worker")).toBe(true);
+  await clearCliAuthDefault("opencode");
+  expect(await loadCliAuthDefault("opencode")).toBe("host");
+});
+
+test("recovery rejects a symlinked auth-staging root", async () => {
+  await isolatedState();
+  const root = join(state!, "pi-pod");
+  const outside = await mkdtemp(join(tmpdir(), "pi-pod-outside-"));
+  try {
+    await mkdir(root, { recursive: true, mode: 0o700 });
+    await symlink(outside, join(root, "auth-staging"));
+    await expect(recoverHostAuthStages()).rejects.toThrow("escaped the wrapper-owned root");
+  } finally {
+    await rm(outside, { recursive: true, force: true });
+  }
+});
+
+test("version-one state is rejected without modification", async () => {
+  await isolatedState();
+  const directory = join(state!, "pi-pod", "auth", "opencode", "legacy");
+  await mkdir(directory, { recursive: true, mode: 0o700 });
+  await writeFile(
+    join(directory, "profile.json"),
+    '{"version":1,"agent":"opencode","provider":"anthropic"}\n',
+    { mode: 0o600 },
+  );
+  await expect(loadAuthProfile("opencode", "legacy")).rejects.toThrow("legacy version 1");
 });
