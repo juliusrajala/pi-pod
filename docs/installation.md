@@ -1,6 +1,6 @@
 # Installation
 
-Use the **compiled CLI** for everyday use. Build a Linux x64 bundle from source below, or [set up an existing bundle](#set-up-the-bundle). The CLI then builds a separate Podman image containing Pi and OpenCode.
+Use `bun run build` from the checkout to build the **compiled CLI and its matching agent image together**, or [set up an existing bundle](#set-up-the-bundle).
 
 ## Requirements
 
@@ -8,31 +8,30 @@ Use the **compiled CLI** for everyday use. Build a Linux x64 bundle from source 
 - **Local rootless Podman** with cgroup v2 resource controllers. Remote Podman services and Podman Machine are not supported.
 - **A working user systemd session** with `systemd-run --user` when your terminal scope does not delegate CPU control. pi-pod can re-execute in a delegated user scope.
 - **Git** for clone workspaces.
-- **Bun 1.3.14** to compile the CLI from source. The release build requires this exact version, pinned in `.mise.toml`. Running the compiled bundle does not require Bun.
+- **Bun 1.3.14 or later**, installed normally and available on PATH, to build or develop from source. No Mise or private Bun installation is required. Running the compiled bundle does not require Bun.
 
 Run Podman and pi-pod as your regular user, without `sudo`. Building the image requires network access to retrieve its base image and dependencies.
 
-## Build the CLI from source
+## Build from source
 
-Run from the trusted pi-pod checkout using Bun 1.3.14:
+Run from the trusted pi-pod checkout:
 
 ```sh
 git clone https://github.com/juliusrajala/pi-pod.git
 cd pi-pod
-bun install
-bun run build:release -- --target linux-x64
-bun run verify:release -- dist/pi-pod-0.2.0-linux-x64
+bun install --frozen-lockfile
+bun run build
 ```
 
-If you use Mise, prefix the Bun commands with `mise exec --` to select the repository-pinned runtime.
+The build compiles and verifies a Linux x64 bundle, smoke-tests its startup from a hostile workspace, and builds the matching Podman agent image. Only then does it update `dist/latest` and the stable `./pi-pod` entrypoint. A successful command means both artifacts are ready.
 
-This produces `dist/pi-pod-0.2.0-linux-x64/`, containing the executable, image recipe and locked dependencies, bundle README, and checksums. It also smoke-tests the compiled CLI's help command from a workspace with hostile startup configuration. The agent image is built in the next step.
+The version comes from `package.json`: currently `dist/pi-pod-0.2.0-linux-x64/` and `localhost/pi-pod:0.2.0`. The bundle contains the executable, image recipe and locked dependencies, README, and checksums.
 
-The build refuses to overwrite an existing versioned bundle directory. If rebuilding the same version, move the previous bundle to a location you want to keep before running the build again.
+Run the same command after source or image changes. It always recompiles current source and lets Podman reuse cached image layers. Same-version bundles are retained as `dist/pi-pod-<version>-linux-x64.previous-<id>` before replacement. A failed compile, verification, or image build leaves the previous bundle and `dist/latest` intact. A forcibly killed build may leave `dist/.build-lock`; remove that directory only after confirming no build is running.
 
 ## Set up the bundle
 
-From a source build, enter `dist/pi-pod-0.2.0-linux-x64`. If you already have a bundle, enter its extracted directory instead. Verify checksums, then build the agent image:
+This section is for a bundle copied or downloaded separately. Source builds already complete these steps with `bun run build`. Enter the extracted bundle directory, verify checksums, then build the local agent image:
 
 ```sh
 sha256sum --check SHA256SUMS
@@ -42,23 +41,23 @@ sha256sum --check SHA256SUMS
 
 Keep `pi-pod` alongside its bundled `container/` directory, which contains the audited `Containerfile` and locked image dependency files. Move the whole bundle if you want to keep it outside the source checkout.
 
-`build:release` compiles the **host CLI**; `./pi-pod build` builds the **agent image**. The bundle does not contain the image. Native Linux, rootless Podman, and cgroup v2 are still required when running the compiled CLI.
+The portable bundle does not contain the Podman image. Its `build` subcommand installs that image on the receiving machine. Native Linux, rootless Podman, and cgroup v2 are still required when running the compiled CLI.
 
 ## Use it with your project
 
-From the bundle directory, pass the path of the project you want to work on:
+From the checkout (or an extracted bundle), pass the path of the project you want to work on:
 
 ```sh
 ./pi-pod dev /path/to/your-project
 ```
 
-From your project directory, use the absolute path to the compiled executable:
+From your project directory, use the stable checkout entrypoint:
 
 ```sh
-/path/to/pi-pod-linux-x64/pi-pod dev .
+/path/to/pi-pod/pi-pod dev .
 ```
 
-The usage guides use `./pi-pod` from the bundle directory. Authentication is required for model requests. `dev` defaults to the selected host Codex credential; see [authentication](authentication.md#choose-authentication) for profiles and API keys.
+The usage guides use `./pi-pod`, available from either the checkout or a bundle directory. Authentication is required for model requests. `dev` defaults to the selected host Codex credential; see [authentication](authentication.md#choose-authentication) for profiles and API keys.
 
 For nonstandard Podman or Git installations, set `PI_POD_TRUSTED_PATH` to an explicitly trusted absolute tool directory; caller PATH entries are not inherited. The compiled CLI disables Bun's dotenv, bunfig, tsconfig, and package.json autoloading. See [architecture](architecture.md#host-startup-paths) for the startup boundary.
 
@@ -85,6 +84,6 @@ The default image is `localhost/pi-pod:0.2.0`. It contains:
 
 The build pins the Node base digest, validates Bun's download checksum, and installs the agents from a checked-in Bun lockfile with integrity records and install scripts disabled. The image currently targets `linux/amd64` only.
 
-Launches never pull or build an image automatically. Run `build` before your first session and after updating the image recipe. A project may need additional dependencies or toolchains; see [workspace dependencies](usage.md#workspace-dependencies-and-toolchains) and the [agent support matrix](agents.md).
+Launches never pull or build an image automatically. Run `bun run build` from source before your first session and after changes. A project may need additional dependencies or toolchains; see [workspace dependencies](usage.md#workspace-dependencies-and-toolchains) and the [agent support matrix](agents.md).
 
 **Next:** [Start an interactive session or run a task](usage.md), or consult [troubleshooting](usage.md#troubleshooting).

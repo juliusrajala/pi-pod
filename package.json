@@ -41,6 +41,8 @@
     "pi-pod-dev": "./scripts/dev-launcher"
   },
   "scripts": {
+    "dev": "./scripts/dev-launcher",
+    "build": "bun run scripts/build.ts",
     "cli:dev": "./scripts/dev-launcher",
     "build:image:dev": "./scripts/dev-launcher build",
     "build:release": "bun run scripts/build-release.ts",

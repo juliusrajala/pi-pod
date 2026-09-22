@@ -2,7 +2,12 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { conventionalConfigPath, loadCliPreferences, parseConfiguration } from "./load.ts";
+import {
+  conventionalConfigPath,
+  loadCliConfiguration,
+  loadCliPreferences,
+  parseConfiguration,
+} from "./load.ts";
 
 let root = "";
 let previousHome: string | undefined;
@@ -165,4 +170,41 @@ test("rejects oversized automatic configuration and supports the HOME fallback",
     model: { provider: "openai-codex", id: "fixture" },
     thinking: "high",
   });
+});
+
+test("explicit package selections are dev-only and obey config opt-out", async () => {
+  const path = conventionalConfigPath();
+  await mkdir(join(path, ".."), { recursive: true });
+  const packages = [{ source: "/trusted/pi-files", files: ["package.json", "extensions", "src"] }];
+  await writeFile(path, JSON.stringify({ version: 1, agents: { pi: { dev: { packages } } } }));
+  expect((await loadCliConfiguration({ mode: "interactive", agent: "pi" }))?.packages).toEqual([
+    { ...packages[0]!, extensions: ["**/*"] },
+  ]);
+  expect(
+    await loadCliConfiguration({ mode: "interactive", agent: "pi", noConfig: true }),
+  ).toBeUndefined();
+  expect(await loadCliConfiguration({ mode: "headless", agent: "pi" })).toBeUndefined();
+  for (const agents of [{ pi: { run: { packages } } }, { opencode: { dev: { packages } } }]) {
+    expect(() => parseConfiguration(JSON.stringify({ version: 1, agents }))).toThrow(
+      "only in agents.pi.dev",
+    );
+  }
+});
+
+test("package selection rejects relative sources, traversal, broad roots, and unsupported fields", () => {
+  for (const entry of [
+    { source: "relative", files: ["package.json"] },
+    { source: "/trusted", files: ["package.json", "../auth.json"] },
+    { source: "/trusted", files: ["package.json", "."] },
+    { source: "/trusted", files: ["package.json", "/etc"] },
+    { source: "/trusted", files: ["package.json", "**/*"] },
+    { source: "/trusted", files: ["extensions"] },
+    { source: "/trusted", files: ["package.json"], command: "run-me" },
+  ]) {
+    expect(() =>
+      parseConfiguration(
+        JSON.stringify({ version: 1, agents: { pi: { dev: { packages: [entry] } } } }),
+      ),
+    ).toThrow();
+  }
 });

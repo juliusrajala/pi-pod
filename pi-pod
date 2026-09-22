@@ -1,0 +1,11 @@
+#!/bin/sh
+# Stable entrypoint: updated only after a complete `bun run build`.
+set -eu
+root=$(/usr/bin/readlink -f -- "$0")
+root=${root%/*}
+cli="$root/dist/latest/pi-pod"
+if [ ! -x "$cli" ]; then
+  printf '%s\n' "No complete build found. Run bun install --frozen-lockfile && bun run build in $root." >&2
+  exit 1
+fi
+exec "$cli" "$@"

@@ -2,6 +2,8 @@ import { lstat, realpath, rm, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import { isInside } from "../../state/identifiers.ts";
+import type { PiDevPackage } from "../../config/pi-packages.ts";
+import { copyPiPackages } from "./package-copy.ts";
 import {
   ensurePrivateStateDirectory,
   privateStateDirectory,
@@ -60,28 +62,45 @@ async function writeSettingsFile(
 
 /**
  * Stage a filtered Pi settings file containing only local extension packages.
- * The packages themselves remain read-only host mounts; general settings,
- * sessions, skills, themes, and credentials never enter the container.
+ * Explicit selections use private copies; legacy packages remain read-only
+ * mounts under the restricted Pi roots. General settings, sessions, skills,
+ * themes, and credentials never enter through this resource path.
  */
-export async function stageHostPiExtensionPackages(): Promise<DevResourceStage | undefined> {
+export async function stageHostPiExtensionPackages(
+  selected?: PiDevPackage[],
+): Promise<DevResourceStage | undefined> {
   const settingsPath = join(hostPiAgentDirectory(), "settings.json");
   const settingsText = await readBoundedText(settingsPath, maxSettingsBytes).catch((error) => {
     if (isMissing(error)) return undefined;
     throw error;
   });
-  if (settingsText === undefined) return undefined;
-  const settings = parseDevSettings(settingsText, hostPiAgentDirectory());
+  if (settingsText === undefined && selected === undefined) return undefined;
+  const settings = parseDevSettings(
+    settingsText ?? "{}",
+    hostPiAgentDirectory(),
+    selected !== undefined,
+  );
+  if (selected !== undefined) {
+    settings.packages = selected.map((entry, index) => ({
+      source: entry.source,
+      destination: `${containerResourceRoot}/package-${index}`,
+      extensions: entry.extensions,
+    }));
+  }
   if (settings.packages.length === 0 && Object.keys(settings.modelDefaults).length === 0)
     return undefined;
 
-  const mounts = (
-    await Promise.all(
-      settings.packages.map(async (entry) => ({
-        ...entry,
-        source: await restrictPackageSource(entry.source, hostPiAgentDirectory()),
-      })),
-    )
-  ).map(({ source, destination }) => ({ source, destination }));
+  let mounts =
+    selected !== undefined
+      ? []
+      : (
+          await Promise.all(
+            settings.packages.map(async (entry) => ({
+              ...entry,
+              source: await restrictPackageSource(entry.source, hostPiAgentDirectory()),
+            })),
+          )
+        ).map(({ source, destination }) => ({ source, destination }));
   const directory = join(
     await privateStateDirectory(),
     "dev-resource-staging",
@@ -90,7 +109,19 @@ export async function stageHostPiExtensionPackages(): Promise<DevResourceStage |
   await ensurePrivateStateDirectory(directory);
   const settingsFile = join(directory, "settings.json");
 
-  await writeSettingsFile(settings, settingsFile);
+  try {
+    if (selected !== undefined) {
+      const copies = await copyPiPackages(selected, directory);
+      mounts = copies.map((source, index) => ({
+        source,
+        destination: `${containerResourceRoot}/package-${index}`,
+      }));
+    }
+    await writeSettingsFile(settings, settingsFile);
+  } catch (error) {
+    await rm(directory, { recursive: true, force: true });
+    throw error;
+  }
 
   let cleaned = false;
   return {
@@ -113,6 +144,7 @@ type LocalExtensionPackage = {
 function parseDevSettings(
   text: string,
   baseDirectory: string,
+  skipPackages = false,
 ): {
   packages: LocalExtensionPackage[];
   modelDefaults: Record<string, string>;
@@ -131,7 +163,7 @@ function parseDevSettings(
       typeof value[key] === "string" ? [[key, value[key]]] : [],
     ),
   );
-  if (value.packages === undefined) return { packages: [], modelDefaults };
+  if (skipPackages || value.packages === undefined) return { packages: [], modelDefaults };
   if (!Array.isArray(value.packages))
     throw new Error("Invalid host Pi settings.json packages: expected an array.");
   const packages = value.packages.map((entry, index) => {

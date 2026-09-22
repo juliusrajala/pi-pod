@@ -3,6 +3,7 @@ import { isAbsolute, join } from "node:path";
 import { agentNames, type AgentName } from "../agents/registry.ts";
 import type { RunMode } from "../execution/types.ts";
 import { readBoundedText } from "../utils/fs.ts";
+import { parsePiPackages, type PiDevPackage } from "./pi-packages.ts";
 import {
   assertModelPreference,
   hasOnlyKeys,
@@ -17,17 +18,18 @@ const maxConfigurationBytes = 256 * 1024;
 
 type ModeSection = {
   preferences?: AgentPreferences;
+  packages?: PiDevPackage[];
 };
 
 type ConfigurationDocument = Partial<Record<AgentName, Partial<Record<RunMode, ModeSection>>>>;
 
 /** Load only an explicit file or the conventional interactive-dev configuration. */
-export async function loadCliPreferences(input: {
+export async function loadCliConfiguration(input: {
   mode: RunMode;
   agent: AgentName;
   configPath?: string;
   noConfig?: boolean;
-}): Promise<AgentPreferences | undefined> {
+}): Promise<ModeSection | undefined> {
   if (input.configPath !== undefined && input.noConfig) {
     throw new Error("--config and --no-config cannot be used together.");
   }
@@ -41,7 +43,13 @@ export async function loadCliPreferences(input: {
   const text = await readConfiguration(path, input.configPath === undefined);
   if (text === undefined) return undefined;
   const document = parseConfiguration(text);
-  return document[input.agent]?.[input.mode]?.preferences;
+  return document[input.agent]?.[input.mode];
+}
+
+export async function loadCliPreferences(
+  input: Parameters<typeof loadCliConfiguration>[0],
+): Promise<AgentPreferences | undefined> {
+  return (await loadCliConfiguration(input))?.preferences;
 }
 
 /** Conventional dev-only path; a configured XDG base must not be cwd-relative. */
@@ -111,7 +119,7 @@ function parseAgentSections(
       throw new Error(`Configuration agents.${agent} supports only dev and run sections.`);
     const mode: RunMode = sectionName === "dev" ? "interactive" : "headless";
     const parsed = parseModeSection(agent, sectionName, sectionValue);
-    sections[mode] = { preferences: parsed.preferences };
+    sections[mode] = { preferences: parsed.preferences, packages: parsed.packages };
     hasResources ||= parsed.hasResources;
   }
   return { sections, hasResources };
@@ -121,10 +129,13 @@ function parseModeSection(
   agent: AgentName,
   mode: "dev" | "run",
   value: unknown,
-): { preferences?: AgentPreferences; hasResources: boolean } {
+): { preferences?: AgentPreferences; packages?: PiDevPackage[]; hasResources: boolean } {
   const field = `agents.${agent}.${mode}`;
-  if (!isRecord(value) || !hasOnlyKeys(value, ["model", "preferences", "resources"])) {
-    throw new Error(`${field} supports only model, preferences, and resources.`);
+  if (!isRecord(value) || !hasOnlyKeys(value, ["model", "preferences", "resources", "packages"])) {
+    throw new Error(`${field} contains unsupported fields.`);
+  }
+  if (value.packages !== undefined && (agent !== "pi" || mode !== "dev")) {
+    throw new Error("Package copies are supported only in agents.pi.dev.packages.");
   }
   const model = value.model === undefined ? undefined : parseModel(value.model, `${field}.model`);
   const native =
@@ -135,6 +146,7 @@ function parseModeSection(
     model === undefined && Object.keys(native).length === 0 ? undefined : { model, ...native };
   return {
     ...(preferences === undefined ? {} : { preferences }),
+    ...(value.packages === undefined ? {} : { packages: parsePiPackages(value.packages) }),
     hasResources:
       value.resources === undefined
         ? false

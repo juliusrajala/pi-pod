@@ -14,19 +14,18 @@ pi-pod gives your coding agent a rootless Podman workspace with selected credent
 
 ### 1. Build the CLI and agent image
 
-You need **Linux x64**, **rootless Podman** with cgroup v2, and **Git**. Some terminal environments also need `systemd-run --user` for CPU limits. Use **Bun 1.3.14** to build the compiled CLI below; Bun is not needed to run it. Already have a bundle? Start with [bundle setup](docs/installation.md#set-up-the-bundle).
+You need **Linux x64**, **rootless Podman** with cgroup v2, **Git**, and **Bun 1.3.14 or later**. Some terminal environments also need `systemd-run --user` for CPU limits. No version manager or repository-local Bun installation is required. Already have a bundle? Start with [bundle setup](docs/installation.md#set-up-the-bundle).
 
 ```sh
 git clone https://github.com/juliusrajala/pi-pod.git
 cd pi-pod
-bun install
-bun run build:release -- --target linux-x64
-cd dist/pi-pod-0.2.0-linux-x64
-sha256sum --check SHA256SUMS
-./pi-pod build
+bun install --frozen-lockfile
+bun run build
 ```
 
-`build:release` compiles the CLI; `./pi-pod build` builds the Podman image containing both agents and common development tools. Keep the executable alongside its bundled `container/` directory. Run the examples below from the bundle directory, replacing `/path/to/your-project` with your project directory. See [installation](docs/installation.md) for details.
+`bun run build` compiles and verifies the CLI, builds its matching Podman image, then makes it available through `./pi-pod`. Run it again after changes, even within the same version. The stable entrypoint follows the last successful build, so shell wrappers can use `/path/to/pi-pod/pi-pod` without version edits. Run the examples below from the checkout. See [installation](docs/installation.md) for details.
+
+For development, `bun run dev --help` runs the current source without compiling. `bun test` runs tests; `bun run validate` runs formatting checks, tests, and type checking. See [development](docs/development.md).
 
 ### 2. Start an interactive session
 
@@ -58,6 +57,8 @@ To use a pi-pod-owned API token instead, create a supported profile through a pr
 ```
 
 See [authentication](docs/authentication.md) for the compatibility matrix, per-agent CLI defaults, and the profile-only public library contract.
+
+To use your own Pi extensions, select local package files in [`agents.pi.dev.packages`](docs/configuration.md#select-local-pi-packages). Pi-pod copies those files into each interactive session; packages do not need to live in a special host directory.
 
 The clone includes local committed `HEAD`, even unpushed commits, but not uncommitted, ignored, or untracked files. Tasks default to a **10-minute timeout**. When the task ends, pi-pod prints the retained clone's path and run ID. Review the result there; pi-pod does not copy changes back, commit, push, or open a PR for you. Remove the clone when you're done:
 

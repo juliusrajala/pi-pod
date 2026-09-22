@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { access, chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { parseArgs, resolveCommand } from "@crustjs/core";
 import { app, normalizeConfigOptOut } from "./app.ts";
 import { isWrapperHelpRequest } from "./help.ts";
@@ -100,34 +100,16 @@ test("launcher ignores a caller PATH Bun from the workspace", async () => {
   }
 });
 
-test("launcher skips a stale BUN_INSTALL Bun for a valid Mise shim", async () => {
-  const root = await mkdtemp(join(tmpdir(), "pi-pod-cli-mise-bun-"));
-  const staleRoot = await mkdtemp(join(tmpdir(), "pi-pod-cli-stale-bun-"));
-  const miseRoot = await mkdtemp(join(tmpdir(), "pi-pod-cli-mise-root-"));
+test("launcher uses the normally installed Bun without runtime discovery", async () => {
+  const root = await mkdtemp(join(tmpdir(), "pi-pod-cli-installed-bun-"));
   try {
-    const staleBin = join(staleRoot, "bin");
-    const miseShims = join(miseRoot, "shims");
-    const staleMarker = join(root, "stale-bun-probed");
-    const miseCwd = join(root, "mise-cwd");
-    await mkdir(staleBin, { recursive: true });
-    await mkdir(miseShims, { recursive: true });
-    await writeFile(
-      join(staleBin, "bun"),
-      `#!/bin/sh\n: > ${JSON.stringify(staleMarker)}\necho 1.3.9\n`,
-      { mode: 0o700 },
-    );
-    await writeFile(
-      join(miseShims, "bun"),
-      `#!/bin/sh\nprintf '%s' "$PWD" > ${JSON.stringify(miseCwd)}\nexec ${JSON.stringify(process.execPath)} "$@"\n`,
-      { mode: 0o700 },
-    );
     const env = { ...process.env };
     delete env.PI_POD_BUN_PATH;
     delete env.BUN_INSTALL_BIN;
-    env.BUN_INSTALL = staleRoot;
-    env.MISE_DATA_DIR = miseRoot;
+    delete env.BUN_INSTALL;
+    delete env.MISE_DATA_DIR;
     env.HOME = join(root, "home");
-    env.PATH = "/definitely-not-the-caller-workspace";
+    env.PATH = `${dirname(process.execPath)}:/usr/bin:/bin`;
 
     const child = Bun.spawn([sourceLauncher(), "--help"], {
       cwd: root,
@@ -143,20 +125,51 @@ test("launcher skips a stale BUN_INSTALL Bun for a valid Mise shim", async () =>
 
     expect(exitCode, stderr).toBe(0);
     expect(stdout).toStartWith("Usage:");
-    expect(await Bun.file(staleMarker).exists()).toBe(true);
-    expect(await Bun.file(miseCwd).text()).toBe(packageRoot());
   } finally {
     await rm(root, { recursive: true, force: true });
-    await rm(staleRoot, { recursive: true, force: true });
-    await rm(miseRoot, { recursive: true, force: true });
+  }
+});
+
+test("launcher refuses workspace Bun before probing it", async () => {
+  const root = await mkdtemp(join(tmpdir(), "pi-pod-cli-workspace-bun-"));
+  try {
+    const bun = join(root, "bun");
+    const marker = join(root, "bun-ran");
+    await writeFile(bun, `#!/bin/sh\ntouch ${JSON.stringify(marker)}\n`, {
+      mode: 0o700,
+    });
+    const env: Record<string, string | undefined> = {
+      ...process.env,
+      HOME: join(root, "home"),
+      PATH: `${root}:/usr/bin:/bin`,
+    };
+    delete env.PI_POD_BUN_PATH;
+    delete env.BUN_INSTALL;
+    delete env.BUN_INSTALL_BIN;
+    const child = Bun.spawn([sourceLauncher(), "--help"], {
+      cwd: root,
+      stdout: "pipe",
+      stderr: "pipe",
+      env,
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+      child.exited,
+    ]);
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain("Refusing to execute Bun from the target workspace");
+    expect(stdout).toBe("");
+    expect(await pathExists(marker)).toBe(false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
   }
 });
 
 test("launcher rejects a Bun runtime below its pinned minimum", async () => {
   const root = await mkdtemp(join(tmpdir(), "pi-pod-cli-bun-"));
+  const bin = await mkdtemp(join(tmpdir(), "pi-pod-cli-old-bun-"));
   try {
-    const bin = join(root, "bin");
-    await mkdir(bin);
     const bun = join(bin, "bun");
     await writeFile(bun, "#!/bin/sh\necho 1.3.9\n");
     await chmod(bun, 0o755);
@@ -177,6 +190,7 @@ test("launcher rejects a Bun runtime below its pinned minimum", async () => {
     expect(stderr).toContain("requires Bun 1.3.14 or later; found 1.3.9");
   } finally {
     await rm(root, { recursive: true, force: true });
+    await rm(bin, { recursive: true, force: true });
   }
 });
 

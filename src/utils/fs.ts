@@ -35,7 +35,7 @@ export async function canonicalPath(path: string): Promise<string> {
   let candidate = resolve(path);
   while (true) {
     try {
-      return join(await realpath(candidate), ...missing.reverse());
+      return join(await realpath(candidate), ...missing);
     } catch (error) {
       if (!isMissing(error)) throw error;
       const metadata = await lstat(candidate).catch((lstatError) => {

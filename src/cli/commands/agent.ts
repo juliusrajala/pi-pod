@@ -1,6 +1,6 @@
 import { Crust } from "@crustjs/core";
 import { resolve } from "node:path";
-import { loadCliPreferences } from "../../config/load.ts";
+import { loadCliConfiguration } from "../../config/load.ts";
 import { maxPromptBytes } from "../../execution/prompt.ts";
 import { loadCliAuthDefault } from "../../auth/defaults.ts";
 import { loadAuthProfile } from "../../auth/profiles.ts";
@@ -105,12 +105,13 @@ async function launchAgent(input: {
   timeoutMs?: number;
 }): Promise<void> {
   // Configuration must fail before delegation, workspace/auth preparation, or Podman.
-  const preferences = await loadCliPreferences({
+  const configuration = await loadCliConfiguration({
     mode: input.mode,
     agent: (input.flags.agent as AgentName | undefined) ?? "pi",
     configPath: input.flags.config,
     noConfig: input.flags["skip-config"] === true,
   });
+  const preferences = configuration?.preferences;
   // Keep caller-controlled validation pure: do not create/read auth state or
   // credentials until limits, network, model preferences, and syntax pass.
   validateCliAuthSyntax(input.flags.auth);
@@ -142,6 +143,7 @@ async function launchAgent(input: {
       workspaceMode: input.flags.workspace as WorkspaceMode | undefined,
       prompt: input.prompt,
       preferences,
+      packages: configuration?.packages,
       agentArgs: input.agentArgs,
       auth: await resolveCliAuth(
         (input.flags.agent as AgentName | undefined) ?? "pi",

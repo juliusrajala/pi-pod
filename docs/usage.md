@@ -105,8 +105,8 @@ Use `./pi-pod --help` or `./pi-pod run --help` for command help. Common options:
 --workspace bind|clone
 --auth host|<profile>              selected source; defaults to per-agent CLI source then host
 --image IMAGE
---config /absolute/path.json        explicit agent/mode model preferences
---no-config                        dev only; skip the preference-file layer
+--config /absolute/path.json        agent/mode preferences and Pi dev package selections
+--no-config                        dev only; skip this config layer (legacy host extensions still apply)
 --prompt TEXT                      run only; task instructions
 --prompt-file PATH                 run only; read task instructions from a file
 --timeout SECONDS                  run only; defaults to 600

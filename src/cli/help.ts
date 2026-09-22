@@ -14,8 +14,8 @@ Run options:
   --workspace <bind|clone>    dev defaults to bind; run defaults to clone
   --auth <host|profile>       defaults to the per-agent CLI source, then host
   --image <image>             default: ${defaultImage}
-  --config <absolute path>    selected agent/mode preferences; dev replaces automatic config
-  --no-config                 dev only; skip the automatic/explicit preference file layer
+  --config <absolute path>    agent/mode preferences and Pi dev package selections
+  --no-config                 dev only; skip this config layer (legacy host extensions still apply)
   --timeout <seconds>         run only; default is 600 seconds
   --network <pasta|none>      default: pasta
   --relabel-workspace         explicitly allow Podman SELinux relabeling of a bind workspace

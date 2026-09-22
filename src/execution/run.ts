@@ -27,10 +27,12 @@ import { prepareWorkspace } from "../workspace/prepare.ts";
 import { discardUnlaunchedRun, releaseRunReservation } from "../workspace/runs.ts";
 import { stageCredentialSource, type StagedCredential } from "./credentials.ts";
 import { resolveRunPolicy } from "./policy.ts";
+import type { PiDevPackage } from "../config/pi-packages.ts";
 
 export type CliRunAgentOptions = Omit<RunAgentOptions, "mode" | "auth"> & {
   mode: RunMode;
   auth: AuthenticationSource;
+  packages?: PiDevPackage[];
 };
 
 /** Public library entrypoint: headless use cannot resolve host/default policy. */
@@ -40,13 +42,17 @@ export async function runAgent(input: RunAgentOptions): Promise<RunResult> {
 
 /** Internal CLI adapter entrypoint. It is deliberately not exported from index.ts. */
 export async function runCliAgent(input: CliRunAgentOptions): Promise<RunResult> {
-  return executeAgent(input as RunAgentOptions, true);
+  return executeAgent(input as RunAgentOptions, true, input.packages);
 }
 
 async function executeAgent(
   input: RunAgentOptions,
   allowHeadlessHostAuth: boolean,
+  packages?: PiDevPackage[],
 ): Promise<RunResult> {
+  if (packages !== undefined && (input.mode !== "interactive" || (input.agent ?? "pi") !== "pi")) {
+    throw new Error("Package copies are supported only for interactive Pi.");
+  }
   const policy = resolveRunPolicy(input, { allowHeadlessHostAuth });
   const {
     agent,
@@ -148,8 +154,9 @@ async function executeAgent(
       input.mode === "interactive" &&
       definition.interactiveDevResources === "pi" &&
       !agentArgs.includes("--no-extensions");
-    const extensionsDirectory = loadHostExtensions ? await hostPiExtensionsDirectory() : undefined;
-    devResources = loadHostExtensions ? await stageHostPiExtensionPackages() : undefined;
+    const extensionsDirectory =
+      loadHostExtensions && packages === undefined ? await hostPiExtensionsDirectory() : undefined;
+    devResources = loadHostExtensions ? await stageHostPiExtensionPackages(packages) : undefined;
     if (extensionsDirectory !== undefined) await assertMountSource(extensionsDirectory);
     if (devResources !== undefined) {
       await assertMountSource(devResources.settingsFile);

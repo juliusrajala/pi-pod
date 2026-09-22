@@ -4,27 +4,27 @@
 
 `pi-pod` is a Bun TypeScript CLI/library that runs Pi or OpenCode in rootless Podman. It is a security boundary for local development and autonomous runs, not an orchestrator, daemon, or deployment platform.
 
-Read `README.md` before changing behavior. Maintained contributor and security guidance lives in `docs/development.md` and `docs/security.md`; [the plans index](plans/README.md) and adversarial constraints in `reviews/` preserve decisions that should not be silently weakened.
+Read `README.md` before changing behavior. Maintained contributor and security guidance lives in `docs/development.md` and `docs/security.md`; [the plans index](docs/plans/README.md) and adversarial constraints in `docs/reviews/` preserve decisions that should not be silently weakened.
 
 ## Commands
 
-Use the repository-pinned Bun runtime:
+Use a normally installed Bun 1.3.14 or later; Mise is optional:
 
 ```sh
-mise exec -- bun install
-mise exec -- bun test
-mise exec -- bun run typecheck
-mise exec -- ./scripts/dev-launcher build
+bun install --frozen-lockfile
+bun test
+bun run typecheck
+bun run build
 ```
 
 Run opt-in integration tests only when Podman/the required user-systemd environment is available:
 
 ```sh
-PI_POD_INTEGRATION=1 mise exec -- bun test src/container/podman.integration.test.ts
-PI_POD_SYSTEMD_INTEGRATION=1 mise exec -- bun test src/cli/delegation.integration.test.ts
+PI_POD_INTEGRATION=1 bun test src/container/podman.integration.test.ts
+PI_POD_SYSTEMD_INTEGRATION=1 bun test src/cli/delegation.integration.test.ts
 ```
 
-Use Bun, not Node, npm, pnpm, or yarn. The development launcher is `./scripts/dev-launcher`; do not invoke `src/cli.ts` from an untrusted workspace, because the launcher protects against workspace-controlled Bun configuration. Normal local use goes through the compiled release bundle.
+Use Bun, not Node, npm, pnpm, or yarn. Develop with `bun run dev` from the trusted checkout; do not invoke `src/cli.ts` from an untrusted workspace, because the source launcher protects against workspace-controlled Bun configuration. `bun run build` produces both the CLI and matching image; normal local use goes through the stable `./pi-pod` entrypoint.
 
 ## Layout
 
@@ -51,8 +51,9 @@ Use Bun, not Node, npm, pnpm, or yarn. The development launcher is `./scripts/de
 
 - Keep security-sensitive code small, explicit, and covered by focused tests.
 - Add or update tests for credential policy, mount/environment allowlists, lifecycle cleanup, and filesystem ownership checks whenever related behavior changes.
-- Run `bun run format:check`, relevant tests, `mise exec -- bun run typecheck`, and `git diff --check` before reporting completion. Formatting is explicit (`bun run format`); do not install hooks or change editor settings.
+- Run `bun run format:check`, relevant tests, `bun run typecheck`, and `git diff --check` before reporting completion. Formatting is explicit (`bun run format`); do not install hooks or change editor settings.
 - Update `README.md` when CLI behavior, image versions, defaults, credential policy, or security guarantees change.
+- Every implementation plan must name a target release and finish with a version bump, release-ready CLI/image build, and recorded validation under the [plans release contract](docs/plans/README.md#release-contract-for-every-plan). Superseded plans are archived with a reason, not marked delivered.
 - Do not commit, amend, create branches, configure remotes, or push unless the user explicitly asks.
 
 ## Distribution

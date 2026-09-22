@@ -11,18 +11,17 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join } from "node:path";
 import packageManifest from "../package.json" with { type: "json" };
 import { auditedContainerfileSha256 } from "../src/cli/distribution.ts";
-const pinnedBun = "1.3.14";
 const targetName = "linux-x64";
 const bunTarget = "bun-linux-x64";
 
-await buildRelease(process.argv.slice(2));
+if (import.meta.main) await buildRelease(process.argv.slice(2));
 
-async function buildRelease(argv: readonly string[]): Promise<void> {
-  if (Bun.version !== pinnedBun) {
-    throw new Error(`Release builds require Bun ${pinnedBun}; found ${Bun.version}.`);
+export async function buildRelease(argv: readonly string[], destination?: string): Promise<void> {
+  if (!Bun.semver.satisfies(Bun.version, packageManifest.engines.bun)) {
+    throw new Error(`Builds require Bun ${packageManifest.engines.bun}; found ${Bun.version}.`);
   }
   const root = await realPath(dirname(import.meta.dir));
   if ((await realPath(process.cwd())) !== root) {
@@ -32,7 +31,8 @@ async function buildRelease(argv: readonly string[]): Promise<void> {
     throw new Error(`Usage: bun run build:release -- --target ${targetName}`);
   }
 
-  const output = join(root, "dist", `pi-pod-${packageManifest.version}-${targetName}`);
+  const output =
+    destination ?? join(root, "dist", `pi-pod-${packageManifest.version}-${targetName}`);
   await requireDirectory(dirname(output));
   await requireAbsent(output);
 
