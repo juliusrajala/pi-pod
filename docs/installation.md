@@ -73,12 +73,10 @@ Linked/installed packages expose `pi-pod` and the legacy `pi-pod-dev` alias thro
 
 ## Agent image
 
-The default image is `localhost/pi-pod:0.3.1`. It contains:
+The default image is `localhost/pi-pod:0.3.1`. It contains the agents listed in the [supported agents](agents.md) matrix, plus:
 
 | Component         | Version / tools                    |
 | ----------------- | ---------------------------------- |
-| Pi                | 0.87.1                             |
-| OpenCode          | 1.18.27                            |
 | Bun               | 1.3.14                             |
 | Development tools | Node/npm, Git, Bash, `fd`, ripgrep |
 
