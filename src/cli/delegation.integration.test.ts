@@ -15,7 +15,7 @@ test.if(enabled)(
     const bin = join(root, "bin");
     const workspace = join(root, "workspace");
     const marker = join(root, "delegated-run");
-    const launcher = resolve(import.meta.dir, "..", "..", "bin", "pi-pod");
+    const launcher = resolve(import.meta.dir, "..", "..", "pi-pod");
     try {
       await mkdir(bin);
       await mkdir(workspace);
@@ -38,14 +38,43 @@ esac
         { mode: 0o700 },
       );
       await chmod(join(bin, "podman"), 0o700);
+      const stateHome = join(root, "state");
       const environment: Record<string, string | undefined> = {
         ...Bun.env,
         PATH: `${bin}:${dirname(process.execPath)}:${Bun.env.PATH ?? ""}`,
-        XDG_STATE_HOME: join(root, "state"),
+        XDG_STATE_HOME: stateHome,
       };
       delete environment.PI_POD_DELEGATED_SCOPE;
+      // Stage a fake profile instead of the removed `--auth none` so the
+      // delegated run exercises real (fixture-token) authentication state.
+      const previousStateHome = Bun.env.XDG_STATE_HOME;
+      Bun.env.XDG_STATE_HOME = stateHome;
+      const { createAuthProfile } = await import("../auth/profiles.ts");
+      try {
+        await createAuthProfile({
+          agent: "opencode",
+          name: "delegation-probe",
+          provider: "anthropic",
+          token: "fake-integration-token",
+        });
+      } finally {
+        if (previousStateHome === undefined) delete Bun.env.XDG_STATE_HOME;
+        else Bun.env.XDG_STATE_HOME = previousStateHome;
+      }
       const child = Bun.spawn(
-        [launcher, "run", workspace, "--workspace", "bind", "--auth", "none", "--prompt", "probe"],
+        [
+          launcher,
+          "run",
+          workspace,
+          "--workspace",
+          "bind",
+          "--agent",
+          "opencode",
+          "--auth",
+          "delegation-probe",
+          "--prompt",
+          "probe",
+        ],
         { env: environment, stdout: "ignore", stderr: "ignore" },
       );
       const exitCode = await child.exited;

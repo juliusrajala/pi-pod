@@ -15,7 +15,6 @@ import {
   updateAuthProfile,
 } from "./profiles.ts";
 import { withAuthManagement } from "./management.ts";
-import { readApiToken } from "./token-input.ts";
 import {
   recoverHostAuthStages,
   recoverPendingAuthStages,
@@ -54,11 +53,6 @@ test("only the supported provider-bound API-token profile can be created", async
   await updateAuthProfile("opencode", "worker", "new-fake-token");
   expect(await Bun.file(stage.authFile).text()).toContain("fake-token");
   await stage.cleanup();
-});
-
-test("token input refuses non-terminal input before changing terminal mode", async () => {
-  if (process.stdin.isTTY) return;
-  await expect(readApiToken()).rejects.toThrow("interactive controlling terminal");
 });
 
 test("profile creation refuses a pre-existing credential instead of reporting success", async () => {

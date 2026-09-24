@@ -1,6 +1,6 @@
 {
   "name": "pi-pod",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Run Pi and OpenCode in a hardened rootless Podman workspace",
   "module": "index.ts",
   "types": "index.ts",

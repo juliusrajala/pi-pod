@@ -31,7 +31,7 @@ test("constructs a least-privilege run with explicit mounts and environment", ()
     promptFile: "/state/prompt.txt",
     agentArgs: [],
     environment: ["OPENAI_API_KEY"],
-    image: "localhost/pi-pod:0.2.0",
+    image: "localhost/pi-pod:0.3.0",
     containerName: "pi-pod-test",
     ownershipToken: "fixture-owner",
     runId: "run-1",
@@ -49,7 +49,7 @@ test("constructs a least-privilege run with explicit mounts and environment", ()
   expect(args).toContain("--env");
   expect(args).toContain("PI_POD_CONTAINER=1");
   expect(args).toContain("OPENAI_API_KEY");
-  expect(args).toContain("io.pi-pod.version=0.2.0");
+  expect(args).toContain("io.pi-pod.version=0.3.0");
   expect(args).toContain("io.pi-pod.run-id=run-1");
   expect(args).toContain("io.pi-pod.owner=fixture-owner");
   expect(args).toContain(

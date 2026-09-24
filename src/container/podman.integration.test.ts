@@ -36,7 +36,7 @@ test.skipIf(Bun.env.PI_POD_INTEGRATION !== "1")(
       promptFile,
       agentArgs: [],
       environment: [],
-      image: Bun.env.PI_POD_TEST_IMAGE || "localhost/pi-pod:0.2.0",
+      image: Bun.env.PI_POD_TEST_IMAGE || "localhost/pi-pod:0.3.0",
       containerName: `pi-pod-test-${crypto.randomUUID().slice(0, 8)}`,
       limits: { ...defaultResourceLimits, temporaryBytes: 64 * 1024 * 1024 },
       network: "none",
@@ -77,7 +77,7 @@ test.skipIf(Bun.env.PI_POD_INTEGRATION !== "1")(
       authDirectory: authState,
       agentArgs: [],
       environment: [],
-      image: Bun.env.PI_POD_TEST_IMAGE || "localhost/pi-pod:0.2.0",
+      image: Bun.env.PI_POD_TEST_IMAGE || "localhost/pi-pod:0.3.0",
       containerName: `pi-pod-test-${crypto.randomUUID().slice(0, 8)}`,
       limits: { ...defaultResourceLimits, temporaryBytes: 64 * 1024 * 1024 },
       network: "none",
@@ -85,7 +85,7 @@ test.skipIf(Bun.env.PI_POD_INTEGRATION !== "1")(
       command: [
         "bun",
         "-e",
-        "import { AuthStorage } from '/usr/local/lib/node_modules/@earendil-works/pi-coding-agent/dist/core/auth-storage.js'; const storage = AuthStorage.create(); await storage.modify('openai-codex', async () => ({ type: 'oauth', access: 'fixture-access', refresh: 'fixture-refresh', expires: 1234 }));",
+        "import { AuthStorage } from '/opt/pi-pod-agent/node_modules/@earendil-works/pi-coding-agent/dist/core/auth-storage.js'; const storage = AuthStorage.create(); await storage.modify('openai-codex', async () => ({ type: 'oauth', access: 'fixture-access', refresh: 'fixture-refresh', expires: 1234 }));",
       ],
     });
     args[args.indexOf("--userns=keep-id")] = "--userns=keep-id:uid=1234,gid=1234";
