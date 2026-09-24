@@ -4,11 +4,11 @@ import { dirname, join } from "node:path";
 
 /** Digest of the audited recipe shipped with the current host controller. */
 export const auditedContainerfileSha256 =
-  "d6f04d7e9339aef18c1b222702eede57de1a6da7797ee0f5d20d39264d477d03";
+  "d6790feb8ea19e196341791c25db6d576daa54ed0c30777ee18da072e4cd4ab9";
 export const auditedAgentPackageJsonSha256 =
-  "bc7dd07e8cddd4cb4630e4d3a74796298033d789b45203957701c03c3491d01d";
+  "85a2d2015baea0f826ad7bc9df453ca5189fe70d6078842504891e20deecae40";
 export const auditedAgentLockSha256 =
-  "76d3e47bc3f8d2db676d986ab16e9bf887b5d239816d53018a96b95832cbd5b6";
+  "d8b3367c1999892e691d5a26d01f73174b45fc99631049cad8f87db5b3b2339b";
 
 export type BuildRecipeLayout = {
   context: string;

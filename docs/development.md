@@ -45,7 +45,7 @@ The normal `bun run build` includes release compilation and verification. For di
 
 ```sh
 bun run build:release -- --target linux-x64
-bun run verify:release -- dist/pi-pod-0.3.0-linux-x64
+bun run verify:release -- dist/pi-pod-0.3.1-linux-x64
 ```
 
 The bundle contains `pi-pod`, the audited `container/Containerfile` and locked image dependency files, `README.md`, and `SHA256SUMS`. Verify the checksums before copying or running it. The compiled executable is the host controller and still requires rootless Podman, cgroup v2, and a locally built image (`./pi-pod build`); it is not a Pi/OpenCode runtime. The source launcher remains the contributor and local-package entrypoint; installed packages expose both `pi-pod` and the legacy `pi-pod-dev` alias, and the launcher refuses caller-workspace Bun paths. Compilation explicitly disables Bun dotenv, bunfig, tsconfig, and package.json autoloading; compilation alone is not the security guarantee.
