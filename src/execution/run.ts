@@ -97,19 +97,12 @@ async function executeAgent(
   let result: RunResult | undefined;
 
   try {
-    // Validate a named profile before workspace, host credential, or Podman side effects.
+    // Validate profile metadata before workspace, host credential, or Podman side effects.
+    // Provider/model compatibility belongs to the selected native agent.
     controller.signal.throwIfAborted();
-    const selectedProvider =
-      credentialSource.source === "profile"
-        ? (await loadAuthProfile(agent, credentialSource.profileName!)).provider
-        : definition.hostAuth?.provider;
-    if (selectedProvider === undefined) throw new Error(`${agent} has no selected auth provider.`);
-    assertEffectiveProviderMatches(
-      selectedProvider,
-      agent,
-      input.preferences,
-      input.agentArgs ?? [],
-    );
+    if (credentialSource.source === "profile") {
+      await loadAuthProfile(agent, credentialSource.profileName!);
+    }
     await assertPodmanAvailable();
     workspace = await prepareWorkspace({
       path: input.workspace,
@@ -352,50 +345,6 @@ async function executeAgent(
     if (timeout !== undefined) clearTimeout(timeout);
     input.signal?.removeEventListener("abort", onAbort);
   }
-}
-
-function assertEffectiveProviderMatches(
-  selectedProvider: string,
-  agent: RunAgentOptions["agent"],
-  preferences: RunAgentOptions["preferences"],
-  agentArgs: readonly string[],
-): void {
-  const effective =
-    nativeProviderOverride(agent ?? "pi", agentArgs) ?? preferences?.model?.provider;
-  if (effective !== undefined && effective !== selectedProvider) {
-    throw new Error(
-      `Selected model provider ${effective} does not match authentication provider ${selectedProvider}.`,
-    );
-  }
-}
-
-/** Parse only reviewed provider-selecting native flags; unknown syntax is rejected. */
-function nativeProviderOverride(
-  agent: "pi" | "opencode",
-  args: readonly string[],
-): string | undefined {
-  const flags = agent === "pi" ? ["--provider"] : ["--model", "-m"];
-  let selected: string | undefined;
-  for (let index = 0; index < args.length; index++) {
-    const argument = args[index]!;
-    for (const flag of flags) {
-      let value: string | undefined;
-      if (argument === flag) value = args[++index];
-      else if (argument.startsWith(`${flag}=`)) value = argument.slice(flag.length + 1);
-      else continue;
-      if (value === undefined || value.length === 0)
-        throw new Error(`${flag} requires a provider value when authentication is selected.`);
-      if (agent === "opencode" && !value.includes("/")) {
-        throw new Error(`Cannot validate provider selected by ${flag}.`);
-      }
-      const provider = agent === "pi" ? value : value.split("/", 1)[0];
-      if (provider === undefined || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(provider)) {
-        throw new Error(`Cannot validate provider selected by ${flag}.`);
-      }
-      selected = provider;
-    }
-  }
-  return selected;
 }
 
 function errorMessage(error: unknown): string {

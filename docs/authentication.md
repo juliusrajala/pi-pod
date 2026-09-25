@@ -20,16 +20,16 @@ This local CLI capability is not public-library behavior. Headless `runAgent` ca
 Profiles are pi-pod-owned, source-only API tokens bound to an agent and provider. Create one through the controlling terminal; the token is prompted without echo and is never accepted in argv:
 
 ```sh
-./pi-pod auth profile create --agent opencode --provider anthropic --profile worker
+./pi-pod auth profile create --agent opencode --provider opencode-go --profile worker
 ./pi-pod run /path/to/project --agent opencode --auth worker --prompt "Fix the failing tests"
 ```
 
-The currently verified matrix is deliberately small:
+Profiles accept any syntactically safe provider identifier for either built-in agent. pi-pod does not maintain a provider catalog or validate whether the agent supports a provider or model. The selected native agent owns discovery and compatibility and reports errors during execution; pi-pod retains its normal container and private-stage cleanup. OpenCode Go is the concrete end-to-end validation target:
 
-| Agent    | Provider    | Native stored shape                              | Validation                                 |
-| -------- | ----------- | ------------------------------------------------ | ------------------------------------------ |
-| OpenCode | `anthropic` | `{ "anthropic": { "type": "api", "key": "…" } }` | Pinned native codec and fixture validation |
-| Pi       | —           | —                                                | No API-token profile is advertised yet     |
+| Agent    | Provider ID policy           | Native stored shape                                   |
+| -------- | ---------------------------- | ----------------------------------------------------- |
+| OpenCode | Any safe provider identifier | `{ "<provider>": { "type": "api", "key": "…" } }`     |
+| Pi       | Any safe provider identifier | `{ "<provider>": { "type": "api_key", "key": "…" } }` |
 
 Manage profiles without displaying secret material:
 

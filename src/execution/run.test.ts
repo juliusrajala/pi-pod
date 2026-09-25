@@ -12,17 +12,6 @@ afterEach(async () => {
   state = undefined;
 });
 
-async function profile(): Promise<void> {
-  state = await mkdtemp(join(tmpdir(), "pi-pod-run-auth-"));
-  Bun.env.XDG_STATE_HOME = state;
-  await createAuthProfile({
-    agent: "opencode",
-    name: "worker",
-    provider: "anthropic",
-    token: "fake",
-  });
-}
-
 async function withFakePodman(action: (root: string) => Promise<void>): Promise<void> {
   const root = await mkdtemp(join(tmpdir(), "pi-pod-run-"));
   const bin = join(root, "bin");
@@ -202,45 +191,46 @@ test("headless library profile failures happen before workspace or Podman work",
   ).rejects.toThrow("Auth profile");
 });
 
-test("native model overrides are checked against the effective profile provider", async () => {
-  await profile();
-  await expect(
-    runAgent({
+test("provider/model compatibility is left to the native harness and failures clean up", async () => {
+  await withFakePodman(async (root) => {
+    const workspace = join(root, "workspace");
+    const argsFile = join(root, "podman-args");
+    await mkdir(workspace);
+    await createAuthProfile({
+      agent: "opencode",
+      name: "worker",
+      provider: "synthetic-unlisted-provider",
+      token: "fake",
+    });
+    await writeFile(
+      join(root, "bin", "podman"),
+      `#!/bin/sh
+case "$1" in
+  info) printf '%s\\n' '{"host":{"os":"linux","cgroupVersion":"v2","cgroupControllers":["cpu","memory","pids"],"serviceIsRemote":false,"security":{"rootless":true}}}' ;;
+  run) printf '%s\\n' "$@" > '${argsFile}'; exit 17 ;;
+  container) exit 1 ;;
+  *) exit 1 ;;
+esac
+`,
+      { mode: 0o700 },
+    );
+    await chmod(join(root, "bin", "podman"), 0o700);
+    const result = await runAgent({
       agent: "opencode",
       mode: "headless",
-      workspace: "/definitely/not/a/workspace",
+      workspace,
+      workspaceMode: "bind",
       auth: { type: "profile", name: "worker" },
-      preferences: { model: { provider: "anthropic", id: "fixture" } },
-      agentArgs: ["--model", "openai/fixture"],
+      preferences: { model: { provider: "different-native-provider", id: "fixture" } },
       prompt: "test",
-    }),
-  ).rejects.toThrow("does not match authentication provider anthropic");
-});
-
-test("CLI host auth checks an explicit conflicting model provider", async () => {
-  await expect(
-    runCliAgent({
-      agent: "opencode",
-      mode: "headless",
-      workspace: "/definitely/not/a/workspace",
-      auth: { type: "host" },
-      preferences: { model: { provider: "anthropic", id: "fixture" } },
-      prompt: "test",
-    }),
-  ).rejects.toThrow("does not match authentication provider openai");
-});
-
-test("Pi host auth checks an explicit native provider override", async () => {
-  await expect(
-    runCliAgent({
-      agent: "pi",
-      mode: "headless",
-      workspace: "/definitely/not/a/workspace",
-      auth: { type: "host" },
-      agentArgs: ["--provider", "anthropic"],
-      prompt: "test",
-    }),
-  ).rejects.toThrow("does not match authentication provider openai-codex");
+      output: { stdout: new WritableStream({ write: () => {} }) },
+    });
+    expect(result.exitCode).toBe(17);
+    expect(result.cleanup.containerRemoved).toBe(true);
+    const args = await Bun.file(argsFile).text();
+    expect(args).toContain("different-native-provider/fixture");
+    expect(args).toContain("opencode");
+  });
 });
 
 test("headless library host auth is rejected before side effects", async () => {

@@ -25,7 +25,7 @@ Examples:
   pi-pod build
   pi-pod dev .
   pi-pod run . --prompt "Fix the failing unit tests"
-  pi-pod auth profile create --agent opencode --provider anthropic --profile worker
+  pi-pod auth profile create --agent opencode --provider opencode-go --profile worker
   pi-pod run . --auth worker --prompt-file task.md
 `;
 

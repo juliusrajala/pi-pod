@@ -2,10 +2,10 @@
 
 Pi is the default; pass `--agent opencode` to select OpenCode. The [shared image](installation.md#agent-image), not a host-installed executable, determines the agent version. `--image` may select a compatible image, but pi-pod never pulls, builds, or discovers one automatically. Pi's version is pinned in `container/package.json` and `container/bun.lock`; this page intentionally avoids repeating its exact version number.
 
-| Agent    | Image version | `dev` | `run` | Selected host credential | API-token profile support                                                          | Native discovery controls                                                                                                                                                                                       |
-| -------- | ------------- | ----- | ----- | ------------------------ | ---------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Pi       | Pinned        | Yes   | Yes   | `openai-codex` only      | None advertised; its pinned API-key behavior is not yet verified                   | Headless disables extensions, skills, prompt templates, themes, context files, and project trust. Interactive dev supports explicit read-only package snapshots or legacy extensions under restricted Pi roots. |
-| OpenCode | 1.18.27       | Yes   | Yes   | `openai` only            | `anthropic` API token: exact native `{ "type": "api", "key": "…" }` provider value | Uses `--pure`; bundled subscription integrations remain available. Project configuration merging is native OpenCode behavior inside the container.                                                              |
+| Agent    | Image version | `dev` | `run` | Selected host credential | API-token profile support                                                            | Native discovery controls                                                                                                                                                                                       |
+| -------- | ------------- | ----- | ----- | ------------------------ | ------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Pi       | Pinned        | Yes   | Yes   | `openai-codex` only      | Any safe provider ID: exact native `{ "type": "api_key", "key": "…" }` profile value | Headless disables extensions, skills, prompt templates, themes, context files, and project trust. Interactive dev supports explicit read-only package snapshots or legacy extensions under restricted Pi roots. |
+| OpenCode | 1.18.27       | Yes   | Yes   | `openai` only            | Any safe provider ID: exact native `{ "type": "api", "key": "…" }` provider value    | Uses `--pure`; bundled subscription integrations remain available. Project configuration merging is native OpenCode behavior inside the container.                                                              |
 
 ## Supported preferences
 
@@ -13,9 +13,9 @@ Model preferences support a common `{ "provider", "id" }` envelope for either ag
 
 ## Authentication identifiers
 
-Pi's `openai-codex` and OpenCode's `openai` identifiers are agent-native and not interchangeable. Local CLI host authentication stages only the selected credential in a fresh private directory for either `dev` or `run`; it never mounts or writes back the host directory. API-token profiles are a separate pi-pod-owned source and are limited to the compatibility matrix above. See [authentication](authentication.md).
+Pi's `openai-codex` and OpenCode's `openai` identifiers are agent-native and not interchangeable. Local CLI host authentication stages only the selected credential in a fresh private directory for either `dev` or `run`; it never mounts or writes back the host directory. API-token profiles are a separate pi-pod-owned source: OpenCode uses `api`, and Pi uses `api_key`, for any syntactically safe provider ID. Profile creation validates only provider-key syntax and the selected agent's generic token envelope, not provider/model support. See [authentication](authentication.md).
 
-Model/provider flags supplied directly to an agent can override wrapper preferences. pi-pod rejects only mismatches it can identify from an explicit wrapper preference/profile combination; it cannot validate arbitrary native project configuration that an agent reads inside the container.
+Model/provider flags supplied directly to an agent can override wrapper preferences. pi-pod does not compare a selected credential's provider with wrapper preferences or native arguments; the native agent owns provider/model compatibility and its ordinary errors are returned to the caller. pi-pod still performs its normal container and private-stage cleanup.
 
 ## Interactive Pi extensions
 
@@ -34,6 +34,6 @@ It does not mount general settings, sessions, skills, themes, analytics, credent
 ## Known limits
 
 - Agents run repository code inside the container. Any supplied credential may be read or exfiltrated by that code.
-- API-token compatibility is intentionally restricted to combinations with pinned native-shape evidence; unsupported combinations fail at profile creation.
+- API-token profiles validate safe provider-key syntax and the agent's generic credential envelope only. Provider/model compatibility and discovery belong to the native agent; errors are surfaced through its normal run result.
 - Pi's filtered interactive resources are Pi-only. OpenCode does not discover or import host settings, plugins, sessions, or configuration.
 - No third agent is supported or implied. See the contributor checklist in [development.md](development.md) before proposing one.

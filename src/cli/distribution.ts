@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 
 /** Digest of the audited recipe shipped with the current host controller. */
 export const auditedContainerfileSha256 =
-  "d6790feb8ea19e196341791c25db6d576daa54ed0c30777ee18da072e4cd4ab9";
+  "ca88bef59ae1f0f33feffb0ca2aab7df9615c7e2f69bbb1f7e0d8712b4e99efc";
 export const auditedAgentPackageJsonSha256 =
   "85a2d2015baea0f826ad7bc9df453ca5189fe70d6078842504891e20deecae40";
 export const auditedAgentLockSha256 =

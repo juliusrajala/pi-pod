@@ -36,11 +36,11 @@ Start with a clean Git repository. The local CLI stages the selected native host
 A supported API-token profile is an explicit alternative. Create it through a no-echo terminal prompt, then select it with the same agent:
 
 ```sh
-./pi-pod auth profile create --agent opencode --provider anthropic --profile worker
+./pi-pod auth profile create --agent opencode --provider opencode-go --profile worker
 ./pi-pod run /path/to/your-project --agent opencode --auth worker --prompt "Fix the failing unit tests"
 ```
 
-See [supported authentication](agents.md#authentication-identifiers) for the intentionally restricted compatibility matrix.
+See [supported authentication](agents.md#authentication-identifiers) for provider and agent credential behavior.
 
 For a longer task, put the instructions in a file and optionally adjust the timeout. Prompt-file paths are relative to your calling directory, not the target project:
 

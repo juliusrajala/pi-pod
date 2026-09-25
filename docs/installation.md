@@ -25,7 +25,7 @@ bun run build
 
 The build compiles and verifies a Linux x64 bundle, smoke-tests its startup from a hostile workspace, and builds the matching Podman agent image. Only then does it update `dist/latest` and the stable `./pi-pod` entrypoint. A successful command means both artifacts are ready.
 
-The version comes from `package.json`: currently `dist/pi-pod-0.3.1-linux-x64/` and `localhost/pi-pod:0.3.1`. The bundle contains the executable, image recipe and locked dependencies, README, and checksums.
+The version comes from `package.json`: currently `dist/pi-pod-0.3.2-linux-x64/` and `localhost/pi-pod:0.3.2`. The bundle contains the executable, image recipe and locked dependencies, README, and checksums.
 
 Run the same command after source or image changes. It always recompiles current source and lets Podman reuse cached image layers. Same-version bundles are retained as `dist/pi-pod-<version>-linux-x64.previous-<id>` before replacement. A failed compile, verification, or image build leaves the previous bundle and `dist/latest` intact. A forcibly killed build may leave `dist/.build-lock`; remove that directory only after confirming no build is running.
 
@@ -73,7 +73,7 @@ Linked/installed packages expose `pi-pod` and the legacy `pi-pod-dev` alias thro
 
 ## Agent image
 
-The default image is `localhost/pi-pod:0.3.1`. It contains the agents listed in the [supported agents](agents.md) matrix, plus:
+The default image is `localhost/pi-pod:0.3.2`. It contains the agents listed in the [supported agents](agents.md) matrix, plus:
 
 | Component         | Version / tools                    |
 | ----------------- | ---------------------------------- |

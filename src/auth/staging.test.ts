@@ -34,25 +34,45 @@ async function isolatedState(): Promise<void> {
   Bun.env.XDG_STATE_HOME = state;
 }
 
-test("only the supported provider-bound API-token profile can be created", async () => {
+test("both agents stage generic API-token profiles under unlisted safe provider IDs", async () => {
   await isolatedState();
   await expect(
-    createAuthProfile({ agent: "pi", name: "worker", provider: "openai-codex", token: "fake" }),
-  ).rejects.toThrow("do not support");
-  const profile = await createAuthProfile({
-    agent: "opencode",
-    name: "worker",
-    provider: "anthropic",
-    token: "fake-token",
-  });
+    createAuthProfile({
+      agent: "opencode",
+      name: "reserved",
+      provider: "constructor",
+      token: "fake",
+    }),
+  ).rejects.toThrow("safe provider");
   await expect(
-    createAuthProfile({ agent: "opencode", name: "worker", provider: "anthropic", token: "other" }),
-  ).rejects.toThrow("already exists");
-  expect((await loadAuthProfile("opencode", "worker")).provider).toBe("anthropic");
-  const stage = await stageAuthProfile(profile);
-  await updateAuthProfile("opencode", "worker", "new-fake-token");
-  expect(await Bun.file(stage.authFile).text()).toContain("fake-token");
-  await stage.cleanup();
+    createAuthProfile({
+      agent: "opencode",
+      name: "invalid",
+      provider: "bad/provider",
+      token: "fake",
+    }),
+  ).rejects.toThrow("safe provider");
+
+  for (const agent of ["opencode", "pi"] as const) {
+    const provider = "synthetic-unlisted-provider";
+    const profile = await createAuthProfile({
+      agent,
+      name: "worker",
+      provider,
+      token: "fake-token",
+    });
+    expect((await loadAuthProfile(agent, "worker")).provider).toBe(provider);
+    const stage = await stageAuthProfile(profile);
+    expect(JSON.parse(await Bun.file(stage.authFile).text())).toEqual({
+      [provider]: {
+        type: agent === "pi" ? "api_key" : "api",
+        key: "fake-token",
+      },
+    });
+    await updateAuthProfile(agent, "worker", "new-fake-token");
+    expect(await Bun.file(stage.authFile).text()).toContain("fake-token");
+    await stage.cleanup();
+  }
 });
 
 test("profile creation refuses a pre-existing credential instead of reporting success", async () => {

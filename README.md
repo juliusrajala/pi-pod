@@ -52,7 +52,7 @@ Headless CLI tasks use the selected agent's narrowly staged host credential by d
 To use a pi-pod-owned API token instead, create a supported profile through a private terminal prompt, then select it:
 
 ```sh
-./pi-pod auth profile create --agent opencode --provider anthropic --profile worker
+./pi-pod auth profile create --agent opencode --provider opencode-go --profile worker
 ./pi-pod run /path/to/your-project --agent opencode --auth worker --prompt "Summarize the repository"
 ```
 

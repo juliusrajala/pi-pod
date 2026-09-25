@@ -36,12 +36,13 @@ export function assertSupportedCredentialProvider(agent: AgentName, provider: st
   agentDefinition(agent).credentialCodec.assertProvider(provider);
 }
 
-/** The reviewed API-token matrix is deliberately smaller than host OAuth support. */
+/** Only agents with a reviewed generic API-token envelope may use profiles. */
 export function assertApiTokenProvider(agent: AgentName, provider: string): void {
-  if (agent !== "opencode" || provider !== "anthropic") {
-    throw new Error(
-      `API-token profiles do not support ${agent}/${provider}. Supported combination: opencode/anthropic.`,
-    );
+  if (
+    !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(provider) ||
+    ["__proto__", "prototype", "constructor"].includes(provider)
+  ) {
+    throw new Error("Provider must be a safe provider identifier.");
   }
 }
 
@@ -51,7 +52,8 @@ export function encodeApiToken(agent: AgentName, provider: string, token: string
   if (typeof token !== "string" || token.length === 0 || token.length > 16 * 1024) {
     throw new Error("API token must be nonempty and at most 16384 characters.");
   }
-  return `${JSON.stringify({ [provider]: { type: "api", key: token } })}\n`;
+  const credential = agent === "pi" ? { type: "api_key", key: token } : { type: "api", key: token };
+  return `${JSON.stringify({ [provider]: credential })}\n`;
 }
 
 /** Profiles accept only the exact source-only API-token shape, not native OAuth extras. */
@@ -62,9 +64,10 @@ export function validateApiTokenDocument(agent: AgentName, provider: string, tex
     throw new Error("Invalid API-token credential document.");
   }
   const credential = document[provider];
+  const expectedType = agent === "pi" ? "api_key" : "api";
   if (
     Object.keys(credential).length !== 2 ||
-    credential.type !== "api" ||
+    credential.type !== expectedType ||
     typeof credential.key !== "string" ||
     credential.key.length === 0 ||
     credential.key.length > 16 * 1024

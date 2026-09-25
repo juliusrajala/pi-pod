@@ -18,18 +18,22 @@ RUN apt-get update \
 
 # The lockfile contains integrity records for the complete native agent trees.
 # Install scripts stay disabled so registry packages cannot execute build-time
-# code as root; the image only exposes the reviewed package bins.
+# code as root. OpenCode's shim requires postinstall and can invoke an unpinned
+# package-manager download, so expose its lockfile-integrity-pinned baseline binary directly.
 COPY package.json bun.lock /tmp/pi-pod-agent/
 RUN cd /tmp/pi-pod-agent \
   && test "$(bun --version)" = "${BUN_VERSION}" \
   && PI_VERSION="$(node -p 'require("./package.json").dependencies["@earendil-works/pi-coding-agent"]')" \
   && grep -F "\"@earendil-works/pi-coding-agent@${PI_VERSION}\"" bun.lock \
   && grep -F "\"opencode-ai@${OPENCODE_VERSION}\"" bun.lock \
+  && grep -F "\"opencode-linux-x64-baseline@${OPENCODE_VERSION}\"" bun.lock \
   && bun install --frozen-lockfile --ignore-scripts --production \
   && mkdir -p /opt/pi-pod-agent \
   && mv node_modules /opt/pi-pod-agent/node_modules \
   && ln -s /opt/pi-pod-agent/node_modules/.bin/pi /usr/local/bin/pi \
-  && ln -s /opt/pi-pod-agent/node_modules/.bin/opencode /usr/local/bin/opencode \
+  && test -x /opt/pi-pod-agent/node_modules/opencode-linux-x64-baseline/bin/opencode \
+  && ln -s /opt/pi-pod-agent/node_modules/opencode-linux-x64-baseline/bin/opencode /usr/local/bin/opencode \
+  && test "$(/usr/local/bin/opencode --version)" = "${OPENCODE_VERSION}" \
   && rm -rf /tmp/pi-pod-agent
 
 ENV HOME=/home/agent

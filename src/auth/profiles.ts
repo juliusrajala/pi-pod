@@ -177,8 +177,11 @@ export async function readAuthMetadata(path: string, label: string): Promise<unk
 }
 
 export function validProvider(value: string): string {
-  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(value)) {
-    throw new Error("Provider must contain letters, numbers, dots, underscores, or dashes.");
+  if (
+    !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(value) ||
+    ["__proto__", "prototype", "constructor"].includes(value)
+  ) {
+    throw new Error("Provider must be a safe provider identifier.");
   }
   return value;
 }

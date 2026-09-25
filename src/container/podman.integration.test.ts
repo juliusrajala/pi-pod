@@ -17,7 +17,7 @@ afterEach(async () => {
 });
 
 test.skipIf(Bun.env.PI_POD_INTEGRATION !== "1")(
-  "Podman mounts workspace, staged auth, and a read-only task file under a read-only root",
+  "Podman mounts workspace/auth safely and executes the bundled OpenCode binary",
   async () => {
     const workspace = join(root, "workspace");
     const authState = join(root, "auth-state");
@@ -36,7 +36,7 @@ test.skipIf(Bun.env.PI_POD_INTEGRATION !== "1")(
       promptFile,
       agentArgs: [],
       environment: [],
-      image: Bun.env.PI_POD_TEST_IMAGE || "localhost/pi-pod:0.3.1",
+      image: Bun.env.PI_POD_TEST_IMAGE || "localhost/pi-pod:0.3.2",
       containerName: `pi-pod-test-${crypto.randomUUID().slice(0, 8)}`,
       limits: { ...defaultResourceLimits, temporaryBytes: 64 * 1024 * 1024 },
       network: "none",
@@ -44,7 +44,7 @@ test.skipIf(Bun.env.PI_POD_INTEGRATION !== "1")(
       command: [
         "bash",
         "-lc",
-        "set -eu; command -v fd >/dev/null; touch /workspace/agent-write; test -f /home/agent/.pi/agent/auth.json; test \"$(cat /run/pi-pod-prompt)\" = 'private task text'; test ! -w /run/pi-pod-prompt; test ! -e /workspace/../host-sentinel; ! touch /rootfs-write; id -u",
+        'set -eu; command -v fd >/dev/null; test -n "$(opencode --version)"; touch /workspace/agent-write; test -f /home/agent/.pi/agent/auth.json; test "$(cat /run/pi-pod-prompt)" = \'private task text\'; test ! -w /run/pi-pod-prompt; test ! -e /workspace/../host-sentinel; ! touch /rootfs-write; id -u',
       ],
     });
     const proc = Bun.spawn(["podman", ...args], {
@@ -66,6 +66,90 @@ test.skipIf(Bun.env.PI_POD_INTEGRATION !== "1")(
 );
 
 test.skipIf(Bun.env.PI_POD_INTEGRATION !== "1")(
+  "Pi native auth storage reads a staged API-token profile without exposing its value",
+  async () => {
+    const provider = "synthetic-unlisted-provider";
+    const authState = join(root, "auth-state");
+    await mkdir(authState);
+    await writeFile(
+      join(authState, "auth.json"),
+      `${JSON.stringify({ [provider]: { type: "api_key", key: "fixture-secret-not-output" } })}\n`,
+    );
+    const args = buildPodmanRunArgs({
+      agent: "pi",
+      mode: "headless",
+      authDirectory: authState,
+      agentArgs: [],
+      environment: [],
+      image: Bun.env.PI_POD_TEST_IMAGE || "localhost/pi-pod:0.3.2",
+      containerName: `pi-pod-test-${crypto.randomUUID().slice(0, 8)}`,
+      limits: { ...defaultResourceLimits, temporaryBytes: 64 * 1024 * 1024 },
+      network: "none",
+      tty: false,
+      command: [
+        "bun",
+        "-e",
+        `import { AuthStorage } from '/opt/pi-pod-agent/node_modules/@earendil-works/pi-coding-agent/dist/core/auth-storage.js'; const credential = await AuthStorage.create().read('${provider}'); if (credential?.type !== 'api_key' || credential.key !== 'fixture-secret-not-output') process.exit(17); console.log('native-auth-ok');`,
+      ],
+    });
+    const proc = Bun.spawn(["podman", ...args], {
+      stdout: "pipe",
+      stderr: "pipe",
+      env: hostToolEnvironment(),
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+
+    expect(exitCode, stderr).toBe(0);
+    expect(stdout.trim()).toBe("native-auth-ok");
+    expect(stdout).not.toContain("fixture-secret-not-output");
+  },
+);
+
+test.skipIf(Bun.env.PI_POD_INTEGRATION !== "1")(
+  "OpenCode native auth listing reads staged API-token profiles without exposing values",
+  async () => {
+    const provider = "synthetic-unlisted-provider";
+    const authState = join(root, "auth-state");
+    await mkdir(authState);
+    await writeFile(
+      join(authState, "auth.json"),
+      `${JSON.stringify({ [provider]: { type: "api", key: "fixture-secret-not-output" } })}\n`,
+    );
+    const args = buildPodmanRunArgs({
+      agent: "opencode",
+      mode: "headless",
+      authDirectory: authState,
+      agentArgs: [],
+      environment: [],
+      image: Bun.env.PI_POD_TEST_IMAGE || "localhost/pi-pod:0.3.2",
+      containerName: `pi-pod-test-${crypto.randomUUID().slice(0, 8)}`,
+      limits: { ...defaultResourceLimits, temporaryBytes: 64 * 1024 * 1024 },
+      network: "none",
+      tty: false,
+      command: ["opencode", "auth", "list"],
+    });
+    const proc = Bun.spawn(["podman", ...args], {
+      stdout: "pipe",
+      stderr: "pipe",
+      env: hostToolEnvironment(),
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+
+    expect(exitCode, stderr).toBe(0);
+    expect(stdout).toContain(provider);
+    expect(stdout).not.toContain("fixture-secret-not-output");
+  },
+);
+
+test.skipIf(Bun.env.PI_POD_INTEGRATION !== "1")(
   "Pi can update staged credentials when keep-id maps the host user to a non-1000 UID",
   async () => {
     const authState = join(root, "auth-state");
@@ -77,7 +161,7 @@ test.skipIf(Bun.env.PI_POD_INTEGRATION !== "1")(
       authDirectory: authState,
       agentArgs: [],
       environment: [],
-      image: Bun.env.PI_POD_TEST_IMAGE || "localhost/pi-pod:0.3.1",
+      image: Bun.env.PI_POD_TEST_IMAGE || "localhost/pi-pod:0.3.2",
       containerName: `pi-pod-test-${crypto.randomUUID().slice(0, 8)}`,
       limits: { ...defaultResourceLimits, temporaryBytes: 64 * 1024 * 1024 },
       network: "none",
